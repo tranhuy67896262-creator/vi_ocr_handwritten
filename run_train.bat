@@ -14,6 +14,10 @@ if defined A1 if not "%A1:~0,2%"=="--" (
     shift
 )
 
+REM Che do UI: --ui = chi cai moi truong + mo UI Gradio (khong train)
+set "DO_UI="
+echo %* | findstr /C:"--ui" >nul 2>&1 && set "DO_UI=1"
+
 REM Thu gom cac doi so con lai (vi %*% khong doi sau shift)
 set "REST="
 :argloop
@@ -69,6 +73,19 @@ echo Start training...
 echo   Smoke test: %~nx0 --max-samples 100
 echo   Real train: run on Colab GPU via run_train.sh
 echo(
+
+REM Che do chi mo UI (--ui)
+if defined DO_UI (
+    echo Opening UI Gradio...
+    "%PY%" -c "import gradio" >nul 2>&1
+    if errorlevel 1 (
+        uv pip install --python "%PY%" gradio
+        if errorlevel 1 exit /b 1
+    )
+    "%PY%" scripts\ui.py
+    exit /b 0
+)
+
 "%PY%" scripts\train_qlora.py %REST%
 set EXIT_CODE=%ERRORLEVEL%
 

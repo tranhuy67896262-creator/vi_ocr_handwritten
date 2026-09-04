@@ -23,7 +23,7 @@ elif [ -z "${HF_TOKEN:-}" ] && ! grep -q "^HF_TOKEN" .env.dev 2>/dev/null; then
 fi
 
 # Cờ riêng của run_train.sh (không truyền xuống train_qlora.py):
-#   --ui          : sau khi train, mở UI Gradio
+#   --ui          : chỉ cài môi trường + mở UI Gradio (không train)
 #   --eval[=NNN]  : sau khi train, chạy eval CER/WER trên NNN mẫu (mặc định 100)
 DO_UI=""
 DO_EVAL=""
@@ -86,6 +86,16 @@ echo "  Train full: $0"
 echo "  Push Hub  : $0 --push --hub-repo <owner>/qwen25vl-7b-vi-hwr-lora"
 echo
 
+# Nếu chỉ muốn mở UI (không train): --ui
+if [ -n "$DO_UI" ]; then
+    echo "===== Mo UI Gradio ====="
+    if ! "$PYTHON" -c "import gradio" 2>/dev/null; then
+        uv pip install --python "$PYTHON" gradio
+    fi
+    "$PYTHON" scripts/ui.py
+    exit 0
+fi
+
 if [ ${#NEW_ARGS[@]} -gt 0 ]; then
     "$PYTHON" scripts/train_qlora.py "${NEW_ARGS[@]}"
 else
@@ -103,15 +113,6 @@ fi
 if [ -n "$DO_EVAL" ]; then
     echo "===== Eval CER/WER tren $EVAL_NUM mau test ====="
     "$PYTHON" scripts/eval_ocr.py --num-test "$EVAL_NUM"
-fi
-
-# Mở UI Gradio nếu có --ui
-if [ -n "$DO_UI" ]; then
-    echo "===== Mo UI Gradio ====="
-    if ! "$PYTHON" -c "import gradio" 2>/dev/null; then
-        uv pip install --python "$PYTHON" gradio
-    fi
-    "$PYTHON" scripts/ui.py
 fi
 
 echo
