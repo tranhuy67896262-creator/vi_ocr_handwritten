@@ -1,6 +1,6 @@
 # AGENTS.md
 
-Dự án fine-tune **Qwen2.5-VL-7B-Instruct** bằng **QLoRA** trên chữ viết tay tiếng Việt (fork `tranhuy67896262/Viet-Handwriting-OCR-v2-bucket` — private — / gốc `5CD-AI/Viet-Handwriting-OCR-v2` — gated). Mục tiêu thiết kế: **chỉ thêm kiến thức, không làm mất kiến thức gốc** → base model luôn đóng băng, chỉ train LoRA adapter (lr 1e-5–2e-5, 1–2 epoch). Đừng "tối ưu" lr lên ~2e-4 hay kéo dài epoch — sẽ phá mục tiêu này. KL-regularization (mặc định bật) chống catastrophic forgetting; chỉ tắt khi VRAM hẹp.
+Dự án fine-tune **Qwen2.5-VL-7B-Instruct** bằng **QLoRA** trên chữ viết tay tiếng Việt (dataset `tranhuy67896262/Viet-Handwriting-OCR-v2-ds` — public — / fallback gốc gated `5CD-AI/Viet-Handwriting-OCR-v2`). Mục tiêu thiết kế: **chỉ thêm kiến thức, không làm mất kiến thức gốc** → base model luôn đóng băng, chỉ train LoRA adapter (lr 1e-5–2e-5, 1–2 epoch). Đừng "tối ưu" lr lên ~2e-4 hay kéo dài epoch — sẽ phá mục tiêu này. KL-regularization (mặc định bật) chống catastrophic forgetting; chỉ tắt khi VRAM hẹp.
 
 ## Chạy & verify
 
