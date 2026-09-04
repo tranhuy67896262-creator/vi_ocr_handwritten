@@ -9,7 +9,7 @@ from configs.configs import Configs
 from src.data.dataset import build_train_eval_datasets
 from src.model.load import build_lora_model, load_model_and_processor
 from src.train.trainer import train
-from src.utils.logging import setup_file_logging
+from src.utils.logging import log_and_exit, setup_file_logging
 
 
 def main():
@@ -56,14 +56,26 @@ def main():
     print(f"Model:   {config.MODEL_NAME}")
     print(f"QLoRA R={config.LORA_R} alpha={config.LORA_ALPHA} | lr={config.LEARNING_RATE} | epochs={config.NUM_EPOCHS}")
 
-    train_ds, eval_ds = build_train_eval_datasets(config, max_samples=args.max_samples)
+    try:
+        train_ds, eval_ds = build_train_eval_datasets(config, max_samples=args.max_samples)
+    except Exception as exc:
+        log_and_exit(
+            exc, stage="DATASET",
+            extra_hint="Kiểm tra HF_TOKEN (.env.dev) có quyền truy cập dataset; tên dataset đã tồn tại trên Hub chưa.",
+        )
 
-    model, processor, use_4bit = load_model_and_processor(config)
-    model = build_lora_model(config, model)
+    try:
+        model, processor, use_4bit = load_model_and_processor(config)
+        model = build_lora_model(config, model)
+    except Exception as exc:
+        log_and_exit(exc, stage="MODEL", extra_hint="Kiểm tra kết nối mạng, HF_TOKEN, tên model.")
 
-    train(config, model, processor, train_ds, eval_ds,
-          push=args.push or config.PUSH_TO_HUB, hub_repo_id=config.HUB_ADAPTER_ID,
-          use_4bit=use_4bit)
+    try:
+        train(config, model, processor, train_ds, eval_ds,
+              push=args.push or config.PUSH_TO_HUB, hub_repo_id=config.HUB_ADAPTER_ID,
+              use_4bit=use_4bit)
+    except Exception as exc:
+        log_and_exit(exc, stage="TRAIN")
 
 
 if __name__ == "__main__":
