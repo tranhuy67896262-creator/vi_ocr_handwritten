@@ -1,0 +1,19 @@
+# Base
+python-dotenv>=1.0
+pillow>=10.0
+tqdm>=4.66
+jiwer>=3.0
+
+# Deep learning (KHÔNG liệt kê torch/torchvision ở đây: PyPI mặc định là bản CPU.
+# Các script run_train.* tự cài bản CUDA: pip install torch torchvision --index-url https://download.pytorch.org/whl/cu128)
+transformers>=4.51
+accelerate>=1.1
+peft>=0.14
+trl>=0.14
+bitsandbytes>=0.45
+datasets>=3.0
+sentencepiece>=0.2.0
+tiktoken>=0.8
+
+# Optional: chỉ cài trên Linux/WSL, tăng tốc attention
+# flash-attn>=2.6
