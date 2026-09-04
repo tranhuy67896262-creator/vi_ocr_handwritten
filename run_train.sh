@@ -22,6 +22,11 @@ elif [ -z "${HF_TOKEN:-}" ] && ! grep -q "^HF_TOKEN" .env.dev 2>/dev/null; then
     echo "  (Lay token tai: https://huggingface.co/settings/tokens)"
 fi
 
+# Cache model/dataset vào thư mục relative của project (vd .hf_cache) — dễ mang theo.
+# Muốn cache chỗ khác/Drive: export HF_HOME=<path> trước khi chạy.
+export HF_HOME="${HF_HOME:-$PWD/.hf_cache}"
+echo "HF cache: $HF_HOME"
+
 # Cài uv nếu chưa có (thay pip/venv — nhanh hơn nhiều)
 if ! command -v uv >/dev/null 2>&1; then
     echo "Dang cai uv..."
@@ -64,6 +69,13 @@ echo "  Push Hub  : $0 --push --hub-repo <owner>/qwen25vl-3b-vi-hwr-lora"
 echo
 
 "$PYTHON" scripts/train_qlora.py "$@"
+
+# Sao lưu adapter + log (tuỳ chọn) — vd: export BACKUP_DIR=/content/drive/MyDrive/vi_ocr_handwritten_models
+if [ -n "${BACKUP_DIR:-}" ] && [ -d models ]; then
+    mkdir -p "$BACKUP_DIR"
+    cp -r models/. "$BACKUP_DIR/" 2>/dev/null
+    echo "Da sao luu ket qua vao: $BACKUP_DIR"
+fi
 
 echo
 echo "Xong. Ket qua o: models/qwen25vl-3b-vi-hwr-lora/ (xem training_metadata.json + training.log)"

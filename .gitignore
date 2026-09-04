@@ -29,6 +29,7 @@ data/*
 !data/raw/.gitkeep
 local
 local/
+.hf_cache/
 
 # Jupyter
 .ipynb_checkpoints

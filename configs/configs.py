@@ -6,22 +6,35 @@ from dotenv import load_dotenv
 load_dotenv(".env.dev")
 
 
+def _adapter_tag(model_name):
+    """Rút kích thước model từ tên (vd 'Qwen2.5-VL-3B-Instruct' -> '3b')."""
+    name = model_name.rsplit("/", 1)[-1].lower()
+    for size in ("3b", "7b", "14b", "32b", "72b"):
+        if size in name:
+            return size
+    return "model"
+
+
 class Configs:
-    """Cấu hình cho project Vi-OCR-Handwritten (Qwen2.5-VL-3B + LoRA/QLoRA)"""
+    """Cấu hình cho project Vi-OCR-Handwritten (Qwen2.5-VL + LoRA/QLoRA)"""
 
     # Paths
     PROJECT_ROOT = Path(__file__).parent.parent
     DATA_DIR = PROJECT_ROOT / "data"
     MODELS_DIR = PROJECT_ROOT / "models"
     NOTEBOOKS_DIR = PROJECT_ROOT / "notebooks"
-    ADAPTER_DIR = MODELS_DIR / "qwen25vl-3b-vi-hwr-lora"
 
     # Hugging Face
     HF_TOKEN = os.getenv("HF_TOKEN", "")
     DATASET_NAME = "hf://buckets/tranhuy67896262/Viet-Handwriting-OCR-v2"
+    # CHỈ cần sửa MODEL_NAME khi muốn đổi model (3B/7B/...) — ADAPTER_DIR tự suy ra sau.
     MODEL_NAME = "Qwen/Qwen2.5-VL-3B-Instruct"
     PUSH_TO_HUB = False
     HUB_ADAPTER_ID = ""  # Truyền qua CLI: --hub-repo <owner>/<repo>
+
+    # Thư mục adapter tự suy từ MODEL_NAME (vd 3B -> qwen25vl-3b-vi-hwr-lora)
+    # Đặt SAU MODEL_NAME vì class body chạy tuần tự.
+    ADAPTER_DIR = MODELS_DIR / f"qwen25vl-{_adapter_tag(MODEL_NAME)}-vi-hwr-lora"
 
     # Prompt hệ thống cho OCR
     SYSTEM_PROMPT = (
