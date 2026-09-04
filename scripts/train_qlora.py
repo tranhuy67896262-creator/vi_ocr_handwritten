@@ -20,6 +20,8 @@ def main():
     parser.add_argument("--epochs", type=int, default=None)
     parser.add_argument("--lr", type=float, default=None)
     parser.add_argument("--batch-size", type=int, default=None)
+    parser.add_argument("--max-seq-len", type=int, default=None,
+                        help="Giới hạn token/text mỗi mẫu (giảm để tiết kiệm VRAM)")
     parser.add_argument("--lora-r", type=int, default=None)
     parser.add_argument("--lora-alpha", type=int, default=None)
     parser.add_argument("--max-samples", type=int, default=None, help="Giới hạn mẫu để test nhanh")
@@ -39,6 +41,8 @@ def main():
         config.LEARNING_RATE = args.lr
     if args.batch_size is not None:
         config.BATCH_SIZE = args.batch_size
+    if args.max_seq_len is not None:
+        config.MAX_SEQ_LEN = args.max_seq_len
     if args.lora_r is not None:
         config.LORA_R = args.lora_r
     if args.lora_alpha is not None:

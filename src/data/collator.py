@@ -1,8 +1,12 @@
 class DataCollatorForQwenVL:
-    """Collator cho Qwen2.5-VL: tokenize chat template + chỉ tính loss trên phần assistant."""
+    """Collator cho Qwen2.5-VL: tokenize chat template + chỉ tính loss trên phần assistant.
 
-    def __init__(self, processor):
+    max_length: giới hạn độ dài chuỗi (truncate) để kiểm soát VRAM.
+    """
+
+    def __init__(self, processor, max_length=None):
         self.processor = processor
+        self.max_length = max_length
 
     def __call__(self, examples):
         texts = [
@@ -15,6 +19,8 @@ class DataCollatorForQwenVL:
             images=images,
             return_tensors="pt",
             padding=True,
+            truncation=True,
+            max_length=self.max_length,
             add_special_tokens=False,
         )
 
