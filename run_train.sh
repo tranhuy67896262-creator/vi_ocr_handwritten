@@ -33,14 +33,16 @@ if ! command -v uv >/dev/null 2>&1; then
     python -m pip install -q uv
 fi
 
-# Chọn python: ưu tiên venv .venv (tạo bằng uv), không thì dùng python hệ thống
+# Chọn python: ưu tiên venv .venv (tạo bằng uv), không thì python hệ thống (đường dẫn tuyệt đối
+# để uv không cài nhầm vào venv đang active của shell)
 if [ -x ".venv/bin/python" ]; then
     PYTHON=".venv/bin/python"
 elif [ -x ".venv/Scripts/python.exe" ]; then
     PYTHON=".venv/Scripts/python.exe"
 else
-    PYTHON="python"
+    PYTHON="$(command -v python)"
 fi
+unset VIRTUAL_ENV
 echo "Python: $("$PYTHON" --version 2>/dev/null || echo "khong xac dinh")"
 
 # Kiểm tra GPU
