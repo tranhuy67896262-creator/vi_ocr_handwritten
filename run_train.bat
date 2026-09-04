@@ -35,9 +35,9 @@ if errorlevel 1 (
 REM Check GPU
 "%PY%" -c "import torch; assert torch.cuda.is_available()" >nul 2>&1
 if errorlevel 1 (
-    echo [WARN] No GPU (torch is CPU build?).
-    echo   - Real training should run on Colab GPU via run_train.sh.
-    echo   - Model 7B needs 16GB+ VRAM; 3B needs ~8GB.
+    echo [WARN] No GPU - torch is CPU build?
+    echo   - Real training should run on Colab GPU via run_train.sh
+    echo   - Model 7B needs 16GB+ VRAM; 3B needs ~8GB
 )
 
 REM Install missing deps
