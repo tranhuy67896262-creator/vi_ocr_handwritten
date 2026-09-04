@@ -14,12 +14,12 @@ class Configs:
     DATA_DIR = PROJECT_ROOT / "data"
     MODELS_DIR = PROJECT_ROOT / "models"
     NOTEBOOKS_DIR = PROJECT_ROOT / "notebooks"
-    ADAPTER_DIR = MODELS_DIR / "qwen25vl-7b-vi-hwr-lora"
+    ADAPTER_DIR = MODELS_DIR / "qwen25vl-3b-vi-hwr-lora"
 
     # Hugging Face
     HF_TOKEN = os.getenv("HF_TOKEN", "")
     DATASET_NAME = "hf://buckets/tranhuy67896262/Viet-Handwriting-OCR-v2"
-    MODEL_NAME = "Qwen/Qwen2.5-VL-7B-Instruct"
+    MODEL_NAME = "Qwen/Qwen2.5-VL-3B-Instruct"
     PUSH_TO_HUB = False
     HUB_ADAPTER_ID = ""  # Truyền qua CLI: --hub-repo <owner>/<repo>
 

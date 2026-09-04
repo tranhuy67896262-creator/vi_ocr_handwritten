@@ -1,6 +1,6 @@
 # AGENTS.md
 
-Dự án fine-tune **Qwen2.5-VL-7B-Instruct** bằng **QLoRA** trên chữ viết tay tiếng Việt (dataset `hf://buckets/tranhuy67896262/Viet-Handwriting-OCR-v2` — Storage Bucket public, đọc được qua `load_dataset` bằng prefix `hf://buckets/...` — / fallback gốc gated `5CD-AI/Viet-Handwriting-OCR-v2`). Mục tiêu thiết kế: **chỉ thêm kiến thức, không làm mất kiến thức gốc** → base model luôn đóng băng, chỉ train LoRA adapter (lr 1e-5–2e-5, 1–2 epoch). Đừng "tối ưu" lr lên ~2e-4 hay kéo dài epoch — sẽ phá mục tiêu này. KL-regularization (mặc định bật) chống catastrophic forgetting; chỉ tắt khi VRAM hẹp.
+Dự án fine-tune **Qwen2.5-VL-3B-Instruct** bằng **QLoRA** trên chữ viết tay tiếng Việt (dataset `hf://buckets/tranhuy67896262/Viet-Handwriting-OCR-v2` — Storage Bucket public, đọc được qua `load_dataset` bằng prefix `hf://buckets/...` — / fallback gốc gated `5CD-AI/Viet-Handwriting-OCR-v2`). Mục tiêu thiết kế: **chỉ thêm kiến thức, không làm mất kiến thức gốc** → base model luôn đóng băng, chỉ train LoRA adapter (lr 1e-5–2e-5, 1–2 epoch). Đừng "tối ưu" lr lên ~2e-4 hay kéo dài epoch — sẽ phá mục tiêu này. KL-regularization (mặc định bật) chống catastrophic forgetting; chỉ tắt khi VRAM hẹp.
 
 ## Chạy & verify
 
@@ -17,7 +17,7 @@ Dự án fine-tune **Qwen2.5-VL-7B-Instruct** bằng **QLoRA** trên chữ viế
 - `src/data/collator.py`: tokenize batch bằng `processor(..., add_special_tokens=False)` rồi mask `labels` = -100 cho phần prompt **và padding**. **Giữ `add_special_tokens=False` ở cả 2 chỗ** — bỏ ra sẽ lệch label 1 token.
 - `src/model/load.py`: `load_model_and_processor` trả **3-tuple `(model, processor, use_4bit)`** với `use_4bit` là giá trị thực sau fallback (thiếu `bitsandbytes` → LoRA full-precision). Trainer phải nhận `use_4bit` này để chọn optimizer `paged_adamw_8bit` vs `adamw_torch` — đừng lấy `config.USE_4BIT` (luôn True) trong trainer.
 - `src/train/kl_trainer.py` (`KLLoRATrainer`, dùng khi `KL_REGULARIZATION=True`): mỗi step forward 2 lần — có LoRA (train) + `disable_adapter()` (no_grad/eval) làm model gốc tham chiếu → `loss = CE + KL_COEFFICIENT * KL(ref || active)`. Tốn thêm 1 forward no_grad/step, không cần copy model thứ 2.
-- `src/train/trainer.py`: lưu adapter + `training_metadata.json` vào `models/qwen25vl-7b-vi-hwr-lora/`. `src/infer/predict.py`: load adapter bằng `PeftModel` từ đường dẫn local hoặc repo id `owner/repo`.
+- `src/train/trainer.py`: lưu adapter + `training_metadata.json` vào `models/qwen25vl-3b-vi-hwr-lora/`. `src/infer/predict.py`: load adapter bằng `PeftModel` từ đường dẫn local hoặc repo id `owner/repo`.
 
 ## Quirk môi trường
 

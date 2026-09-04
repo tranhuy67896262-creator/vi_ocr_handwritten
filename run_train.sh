@@ -60,10 +60,10 @@ echo "GPU: $("$PYTHON" -c "import torch; print(torch.cuda.get_device_name(0))" 2
 echo "Bat dau train..."
 echo "  Smoke test: $0 --max-samples 100"
 echo "  Train full: $0"
-echo "  Push Hub  : $0 --push --hub-repo <owner>/qwen25vl-7b-vi-hwr-lora"
+echo "  Push Hub  : $0 --push --hub-repo <owner>/qwen25vl-3b-vi-hwr-lora"
 echo
 
 "$PYTHON" scripts/train_qlora.py "$@"
 
 echo
-echo "Xong. Ket qua o: models/qwen25vl-7b-vi-hwr-lora/ (xem training_metadata.json + training.log)"
+echo "Xong. Ket qua o: models/qwen25vl-3b-vi-hwr-lora/ (xem training_metadata.json + training.log)"
