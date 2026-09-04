@@ -4,7 +4,7 @@ Dự án fine-tune **Qwen2.5-VL-3B-Instruct** bằng **QLoRA** trên chữ viế
 
 ## Chạy & verify
 
-- Entry points: `python scripts/train_qlora.py` (train), `python scripts/eval_ocr.py --image <path>` (OCR 1 ảnh) hoặc `--num-test N` (CER/WER trên test split). `main.py` chỉ là stub in config.
+- Entry points: `python scripts/train_qlora.py` (train), `python scripts/eval_ocr.py --image <path>` (OCR 1 ảnh) hoặc `--num-test N` (CER/WER trên test split), `python scripts/export_merged.py` (merge LoRA + base -> full model, cần GPU). `main.py` chỉ là stub in config.
 - Scripts tự `sys.path.insert(0, project_root)` — chạy trực tiếp, đừng import như module.
 - `run_train.sh` (Linux/Colab; nhận token làm arg đầu và tự ghi `.env.dev`) / `run_train.bat` (Windows) = auto-cài uv + deps + torch-CUDA rồi gọi `train_qlora.py`. Mọi CLI flag truyền thẳng qua. Cả 2 đều ưu tiên dùng venv `.venv` nếu có (tạo bằng `uv venv --python 3.13 .venv`), không thì dùng python hệ thống.
 - Không có test/lint/CI. Verify nhanh: `python -m compileall configs src scripts main.py` (PowerShell **không** expand `src/**/*.py` — đừng dùng glob đó).

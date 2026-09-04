@@ -88,6 +88,16 @@ python scripts/eval_ocr.py --image path/to/anh.jpg --adapter tranhuy67896262/qwe
 # Đánh giá CER/WER trên test split
 python scripts/eval_ocr.py --num-test 200
 
+# Export full model (merge LoRA vào base, chạy độc lập được) — cần GPU >=16GB
+python scripts/export_merged.py
+#   --adapter <path-or-repo-id>   adapter khác config (mặc định: từ config)
+#   --output <dir>                nơi xuất (mặc định: models/qwen25vl-*-vi-hwr-lora-merged)
+
+# Export GGUF (llama.cpp/Ollama) — chạy trên Linux/Colab sau export_merged
+./scripts/export_gguf.sh            # convert f16 + quantize Q4_K_M vào models/gguf/
+#   QUANT=Q4_K_M ./scripts/export_gguf.sh   (chọn loại quantize)
+#   LLAMA_CPP_DIR=... ./scripts/export_gguf.sh   (nếu llama.cpp chỗ khác)
+
 # Push adapter lên Hub (repo sẽ được tạo mới nếu chưa tồn tại)
 python scripts/train_qlora.py --push --hub-repo <owner>/qwen25vl-3b-vi-hwr-lora
 
