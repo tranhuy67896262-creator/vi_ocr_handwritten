@@ -16,14 +16,12 @@ if errorlevel 1 (
 
 REM Chọn python TUYỆT ĐỐI: ưu tiên .venv, không thì python trên PATH.
 REM Xoá VIRTUAL_ENV để uv không cài nhầm vào venv đang active của shell.
+REM KHÔNG dùng goto trong block ( ) — cmd bị lỗi ". was unexpected at this time".
 set "VIRTUAL_ENV="
-if exist ".venv\Scripts\python.exe" (
-    set "PY=.venv\Scripts\python.exe"
-) else (
-    for /f "delims=" %%i in ('where python 2^>nul') do set "PY=%%i" & goto :pyfound
-    set "PY=python"
-)
-:pyfound
+set "PY="
+for /f "delims=" %%i in ('where python 2^>nul') do if not defined PY set "PY=%%i"
+if not defined PY set "PY=python"
+if exist ".venv\Scripts\python.exe" set "PY=.venv\Scripts\python.exe"
 "%PY%" --version
 
 REM Kiểm tra torch có GPU + torchvision (PyPI mặc định là bản CPU)
