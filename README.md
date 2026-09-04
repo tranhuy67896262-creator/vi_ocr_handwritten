@@ -50,7 +50,7 @@ pip install -r requirements.txt
 
 ## Chạy 1 lệnh
 
-**Trên Colab (khuyến nghị cho 7B):**
+**Trên Colab (khuyến nghị cho 3B):**
 1. Upload toàn bộ project vào Colab (kéo-thả vào `/content/`).
 2. Mở terminal (hoặc 1 cell) — truyền token luôn, script tự tạo `.env.dev`:
 ```bash
@@ -61,7 +61,7 @@ Hoặc bỏ qua token nếu đã upload sẵn `.env.dev`. Lấy token tại http
 
 **Trên Windows / Linux local:**
 ```bash
-run_train.bat   # Windows (7B cần GPU 16GB+, máy 6GB chỉ dùng được model 3B)
+run_train.bat   # Windows (3B cần GPU ~8GB+; 7B thì cần 16GB+)
 ./run_train.sh  # Linux / WSL2
 ```
 
@@ -83,15 +83,15 @@ python scripts/train_qlora.py --epochs 2 --lr 1e-5 --lora-r 16 --lora-alpha 32
 python scripts/eval_ocr.py --image path/to/anh.jpg
 
 # OCR bằng adapter load trực tiếp từ Hub (không cần tải về)
-python scripts/eval_ocr.py --image path/to/anh.jpg --adapter tranhuy67896262/qwen25vl-7b-vi-hwr-lora
+python scripts/eval_ocr.py --image path/to/anh.jpg --adapter tranhuy67896262/qwen25vl-3b-vi-hwr-lora
 
 # Đánh giá CER/WER trên test split
 python scripts/eval_ocr.py --num-test 200
 
 # Push adapter lên Hub (repo sẽ được tạo mới nếu chưa tồn tại)
-python scripts/train_qlora.py --push --hub-repo <owner>/qwen25vl-7b-vi-hwr-lora
+python scripts/train_qlora.py --push --hub-repo <owner>/qwen25vl-3b-vi-hwr-lora
 
-python scripts/train_qlora.py --push --hub-repo tranhuy67896262/qwen25vl-7b-vi-hwr-lora
+python scripts/train_qlora.py --push --hub-repo tranhuy67896262/qwen25vl-3b-vi-hwr-lora
 ```
 > Dataset mặc định là `tranhuy67896262/Viet-Handwriting-OCR-v2-ds` (public). Nếu chưa có, script fallback sang dataset gốc gated `5CD-AI/Viet-Handwriting-OCR-v2` (phải đồng ý điều khoản trên HF). Có thể đổi bằng `--dataset <owner>/<repo>`.
 > 

@@ -19,7 +19,7 @@ def _get_quant_config(config, compute_dtype):
 
 
 def load_model_and_processor(config):
-    """Load Qwen2.5-VL-7B với QLoRA 4-bit (base model đóng băng)."""
+    """Load Qwen2.5-VL với QLoRA 4-bit (base model đóng băng)."""
     compute_dtype = torch.bfloat16 if torch.cuda.is_bf16_supported() else torch.float16
     use_4bit = config.USE_4BIT and torch.cuda.is_available()
 

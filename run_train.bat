@@ -34,9 +34,8 @@ REM Kiểm tra GPU
 "%PYTHON%" -c "import torch; assert torch.cuda.is_available()" >nul 2>&1
 if errorlevel 1 (
     echo [WARN] Khong thay GPU (torch dang ban CPU?).
-    echo   - May local 6GB VRAM khong train duoc 7B.
-    echo   - Train 7B that nen chay tren Colab H100 bang run_train.sh
-    echo   - Muon train tren may nay: doi MODEL_NAME=Qwen/Qwen2.5-VL-3B-Instruct trong configs\configs.py
+    echo   - Train that nen chay tren Colab GPU (run_train.sh) hoac may co CUDA.
+    echo   - Model 3B mac dinh can ~8GB VRAM; 7B can 16GB+.
 )
 
 REM Cài deps còn thiếu
@@ -49,7 +48,7 @@ if errorlevel 1 (
 
 echo Bat dau train...
 echo   Smoke test: %~nx0 --max-samples 100
-echo   Train 7B  : chay tren Colab H100 (run_train.sh)
+echo   Train that : chay tren Colab GPU (run_train.sh)
 echo.
 
 "%PYTHON%" scripts\train_qlora.py %*
