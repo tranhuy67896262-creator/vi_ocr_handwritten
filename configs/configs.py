@@ -7,7 +7,7 @@ load_dotenv(".env.dev")
 
 
 class Configs:
-    """Cấu hình cho project Vi-OCR-Handwritten (Qwen2.5-VL-7B + LoRA/QLoRA)"""
+    """Cấu hình cho project Vi-OCR-Handwritten (Qwen2.5-VL-3B + LoRA/QLoRA)"""
 
     # Paths
     PROJECT_ROOT = Path(__file__).parent.parent

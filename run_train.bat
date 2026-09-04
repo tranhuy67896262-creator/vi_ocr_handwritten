@@ -56,5 +56,5 @@ echo.
 set EXIT_CODE=%ERRORLEVEL%
 
 echo.
-echo Xong. Ket qua o: models\qwen25vl-7b-vi-hwr-lora\  (xem training_metadata.json + training.log)
+echo Xong. Ket qua o: models\qwen25vl-3b-vi-hwr-lora\  (xem training_metadata.json + training.log)
 exit /b %EXIT_CODE%

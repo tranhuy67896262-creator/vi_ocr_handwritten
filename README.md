@@ -23,9 +23,9 @@
 
 ---
 
-# Pipeline Fine-tune Qwen2.5-VL-7B (chữ viết tay Việt)
+# Pipeline Fine-tune Qwen2.5-VL-3B (chữ viết tay Việt)
 
-Cách **thêm kiến thức mới mà không làm mất kiến thức gốc**: base model đóng băng hoàn toàn, chỉ train LoRA adapter rank thấp với lr nhỏ (`1e-5 → 2e-5`), 1-2 epoch, cosine schedule. Kết quả là một adapter nhỏ (~vài trăm MB) lưu trong `models/qwen25vl-7b-vi-hwr-lora/`, không đụng tới weight gốc.
+Cách **thêm kiến thức mới mà không làm mất kiến thức gốc**: base model đóng băng hoàn toàn, chỉ train LoRA adapter rank thấp với lr nhỏ (`1e-5 → 2e-5`), 1-2 epoch, cosine schedule. Kết quả là một adapter nhỏ (~vài trăm MB) lưu trong `models/qwen25vl-3b-vi-hwr-lora/`, không đụng tới weight gốc.
 
 ## Cấu trúc
 

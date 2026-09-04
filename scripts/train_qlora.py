@@ -14,7 +14,7 @@ from src.utils.logging import log_and_exit, setup_file_logging
 
 def main():
     parser = argparse.ArgumentParser(
-        description="Fine-tune Qwen2.5-VL-7B bằng LoRA/QLoRA trên chữ viết tay Việt"
+        description="Fine-tune Qwen2.5-VL-3B bằng LoRA/QLoRA trên chữ viết tay Việt"
     )
     parser.add_argument("--dataset", type=str, default=None, help="Tên dataset HF (mặc định: từ config)")
     parser.add_argument("--epochs", type=int, default=None)
@@ -28,7 +28,7 @@ def main():
     parser.add_argument("--no-kl", action="store_true",
                         help="Tắt KL-regularization (chống mất kiến thức) để tiết kiệm VRAM")
     parser.add_argument("--push", action="store_true", help="Push adapter lên Hugging Face Hub")
-    parser.add_argument("--hub-repo", type=str, default=None, help="Tên repo Hub đích khi push, vd: owner/qwen25vl-7b-vi-hwr-lora")
+    parser.add_argument("--hub-repo", type=str, default=None, help="Tên repo Hub đích khi push, vd: owner/qwen25vl-3b-vi-hwr-lora")
     args = parser.parse_args()
 
     config = Configs()
