@@ -6,6 +6,23 @@ echo ==========================================
 echo  Vi-OCR-Handwritten - Train QLoRA (Windows)
 echo ==========================================
 
+REM Nhan HF_TOKEN tu doi so dau tien (neu khong bat dau bang --), giong run_train.sh
+set "A1=%~1"
+if defined A1 if not "%A1:~0,2%"=="--" (
+    > .env.dev echo HF_TOKEN = %A1%
+    echo Da ghi HF_TOKEN vao .env.dev
+    shift
+)
+
+REM Thu gom cac doi so con lai (vi %*% khong doi sau shift)
+set "REST="
+:argloop
+if "%~1"=="" goto :argsdone
+set "REST=%REST% %~1"
+shift
+goto :argloop
+:argsdone
+
 REM Resolve absolute python: prefer .venv, else python on PATH.
 REM Clear VIRTUAL_ENV so uv does not install into the shell's active venv.
 set "VIRTUAL_ENV="
@@ -52,7 +69,7 @@ echo Start training...
 echo   Smoke test: %~nx0 --max-samples 100
 echo   Real train: run on Colab GPU via run_train.sh
 echo(
-"%PY%" scripts\train_qlora.py %*
+"%PY%" scripts\train_qlora.py %REST%
 set EXIT_CODE=%ERRORLEVEL%
 
 echo(
