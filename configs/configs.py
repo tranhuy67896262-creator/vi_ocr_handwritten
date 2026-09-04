@@ -28,7 +28,7 @@ class Configs:
     HF_TOKEN = os.getenv("HF_TOKEN", "")
     DATASET_NAME = "hf://buckets/tranhuy67896262/Viet-Handwriting-OCR-v2"
     # CHỈ cần sửa MODEL_NAME khi muốn đổi model (3B/7B/...) — ADAPTER_DIR tự suy ra sau.
-    MODEL_NAME = "Qwen/Qwen2.5-VL-3B-Instruct"
+    MODEL_NAME = "Qwen/Qwen2.5-VL-7B-Instruct"
     PUSH_TO_HUB = False
     HUB_ADAPTER_ID = ""  # Truyền qua CLI: --hub-repo <owner>/<repo>
 
