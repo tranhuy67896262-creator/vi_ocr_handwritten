@@ -27,6 +27,8 @@ models/*
 data/*
 !data/.gitkeep
 !data/raw/.gitkeep
+local
+local/
 
 # Jupyter
 .ipynb_checkpoints
