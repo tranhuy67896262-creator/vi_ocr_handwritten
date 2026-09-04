@@ -1,3 +1,4 @@
+import re
 import subprocess
 import sys
 from pathlib import Path
@@ -104,6 +105,30 @@ def export_ui(adapter):
     yield from _run(cmd)
 
 
+# ---------------- Settings (HF token) ----------------
+
+def _token_path():
+    return PROJECT_ROOT / ".env.dev"
+
+
+def token_status():
+    path = _token_path()
+    if path.exists():
+        m = re.search(r"HF_TOKEN\s*=\s*(\S+)", path.read_text(encoding="utf-8"))
+        if m and m.group(1):
+            tok = m.group(1)
+            return f"✅ Đã có token: `{tok[:6]}...{tok[-4:]}`"
+    return "❌ Chưa có token. Nhập vào ô bên dưới rồi bấm Lưu."
+
+
+def save_token(token):
+    tok = (token or "").strip()
+    if not tok:
+        return "Token rỗng — chưa lưu."
+    _token_path().write_text(f"HF_TOKEN = {tok}\n", encoding="utf-8")
+    return f"✅ Đã lưu token vào {_token_path()}"
+
+
 # ---------------- App ----------------
 
 def build_app():
@@ -160,6 +185,18 @@ def build_app():
             export_btn = gr.Button("📦 Export full model", variant="primary")
             export_log = gr.Textbox(label="Log", lines=20, max_lines=100)
             export_btn.click(export_ui, inputs=[export_adapter], outputs=export_log)
+
+        with gr.Tab("Settings"):
+            tok_status = gr.Markdown(value=token_status())
+            token_in = gr.Textbox(label="HF_TOKEN", type="password",
+                                  placeholder="hf_xxxx... (máy Colab: thêm qua biểu tượng key 🔑 hoặc dán vào đây)")
+            save_btn = gr.Button("💾 Lưu token vào .env.dev", variant="primary")
+            tok_msg = gr.Markdown()
+            save_btn.click(save_token, inputs=[token_in], outputs=[tok_msg, tok_status])
+            gr.Markdown(
+                "Ghi chú: token được lưu vào `.env.dev` (git-ignored). "
+                "Mọi nút Train/OCR/Eval/Export đều đọc token này khi chạy."
+            )
 
     return demo
 
