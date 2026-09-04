@@ -98,6 +98,10 @@ python scripts/export_merged.py
 #   QUANT=Q4_K_M ./scripts/export_gguf.sh   (chọn loại quantize)
 #   LLAMA_CPP_DIR=... ./scripts/export_gguf.sh   (nếu llama.cpp chỗ khác)
 
+# UI Gradio (Colab/terminal): bấm nút Train/OCR/Eval/Export, log realtime, link public
+pip install -q gradio
+python scripts/ui.py
+
 # Push adapter lên Hub (repo sẽ được tạo mới nếu chưa tồn tại)
 python scripts/train_qlora.py --push --hub-repo <owner>/qwen25vl-3b-vi-hwr-lora
 

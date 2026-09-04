@@ -17,6 +17,7 @@ def main():
         description="Fine-tune Qwen2.5-VL-3B bằng LoRA/QLoRA trên chữ viết tay Việt"
     )
     parser.add_argument("--dataset", type=str, default=None, help="Tên dataset HF (mặc định: từ config)")
+    parser.add_argument("--model", type=str, default=None, help="Tên model HF (mặc định: từ config)")
     parser.add_argument("--epochs", type=int, default=None)
     parser.add_argument("--lr", type=float, default=None)
     parser.add_argument("--batch-size", type=int, default=None)
@@ -35,6 +36,8 @@ def main():
     setup_file_logging(config.MODELS_DIR / "training.log")
     if args.dataset:
         config.DATASET_NAME = args.dataset
+    if args.model:
+        config.MODEL_NAME = args.model
     if args.epochs is not None:
         config.NUM_EPOCHS = args.epochs
     if args.lr is not None:
