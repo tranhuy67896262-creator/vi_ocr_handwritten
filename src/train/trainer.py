@@ -1,4 +1,5 @@
 import json
+import math
 from datetime import datetime
 
 import torch
@@ -9,7 +10,7 @@ from src.train.kl_trainer import KLLoRATrainer
 from src.utils.logging import setup_file_logging
 
 
-def get_training_args(config, output_dir, use_4bit):
+def get_training_args(config, output_dir, use_4bit, num_train_steps=None):
     use_bf16 = torch.cuda.is_bf16_supported()
     args = dict(
         output_dir=str(output_dir),
@@ -19,7 +20,6 @@ def get_training_args(config, output_dir, use_4bit):
         num_train_epochs=config.NUM_EPOCHS,
         learning_rate=config.LEARNING_RATE,
         lr_scheduler_type=config.LR_SCHEDULER,
-        warmup_ratio=config.WARMUP_RATIO,
         max_grad_norm=1.0,
         logging_steps=config.LOGGING_STEPS,
         save_steps=config.SAVE_STEPS,
@@ -33,6 +33,8 @@ def get_training_args(config, output_dir, use_4bit):
         report_to=["none"],
         save_strategy="steps",
     )
+    if num_train_steps:
+        args["warmup_steps"] = max(1, int(config.WARMUP_RATIO * num_train_steps))
     if config.GRADIENT_CHECKPOINTING:
         args["gradient_checkpointing_kwargs"] = {"use_reentrant": False}
     return TrainingArguments(**args)
@@ -45,7 +47,12 @@ def train(config, model, processor, train_ds, eval_ds=None, push=False, hub_repo
     setup_file_logging(log_path)
 
     collator = DataCollatorForQwenVL(processor)
-    args = get_training_args(config, config.MODELS_DIR / "checkpoints", use_4bit)
+    eff_batch = config.BATCH_SIZE * config.GRADIENT_ACCUMULATION_STEPS
+    num_train_steps = None
+    if train_ds is not None:
+        steps_per_epoch = math.ceil(len(train_ds) / eff_batch)
+        num_train_steps = steps_per_epoch * config.NUM_EPOCHS
+    args = get_training_args(config, config.MODELS_DIR / "checkpoints", use_4bit, num_train_steps)
 
     trainer_cls = KLLoRATrainer if config.KL_REGULARIZATION else Trainer
     trainer_kwargs = dict(
