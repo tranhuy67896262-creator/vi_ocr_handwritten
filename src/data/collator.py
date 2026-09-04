@@ -19,6 +19,9 @@ class DataCollatorForQwenVL:
         )
 
         labels = batch["input_ids"].clone()
+        pad_id = self.processor.tokenizer.pad_token_id
+        if pad_id is not None:
+            labels[labels == pad_id] = -100
         for i, e in enumerate(examples):
             prompt = self.processor.apply_chat_template(
                 e["messages"][:-1], tokenize=False, add_generation_prompt=True

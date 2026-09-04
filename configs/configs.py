@@ -50,6 +50,12 @@ class Configs:
     EVAL_STEPS = 250
     SEED = 42
 
+    # Chống mất kiến thức gốc: cộng KL-divergence(model gốc || model LoRA) vào loss.
+    # Model gốc = forward cùng batch với LoRA tạm tắt (disable_adapter), không tốn thêm model copy.
+    # Tắt (False) nếu VRAM hẹp — tốn thêm 1 forward no_grad mỗi step.
+    KL_REGULARIZATION = True
+    KL_COEFFICIENT = 0.5
+
     # LoRA
     USE_4BIT = True
     LORA_R = 32

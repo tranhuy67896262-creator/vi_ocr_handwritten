@@ -48,7 +48,7 @@ def load_model_and_processor(config):
         )
 
     print(f"4-bit QLoRA: {'bật' if use_4bit else 'tắt'} | dtype: {compute_dtype}")
-    return model, processor
+    return model, processor, use_4bit
 
 
 def build_lora_model(config, model):

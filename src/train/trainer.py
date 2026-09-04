@@ -5,6 +5,7 @@ import torch
 from transformers import Trainer, TrainingArguments
 
 from src.data.collator import DataCollatorForQwenVL
+from src.train.kl_trainer import KLLoRATrainer
 from src.utils.logging import setup_file_logging
 
 
@@ -37,21 +38,26 @@ def get_training_args(config, output_dir, use_4bit):
     return TrainingArguments(**args)
 
 
-def train(config, model, processor, train_ds, eval_ds=None, push=False, hub_repo_id=""):
-    use_4bit = config.USE_4BIT
+def train(config, model, processor, train_ds, eval_ds=None, push=False, hub_repo_id="", use_4bit=None):
+    if use_4bit is None:
+        use_4bit = config.USE_4BIT
     log_path = config.MODELS_DIR / "training.log"
     setup_file_logging(log_path)
 
     collator = DataCollatorForQwenVL(processor)
     args = get_training_args(config, config.MODELS_DIR / "checkpoints", use_4bit)
 
-    trainer = Trainer(
+    trainer_cls = KLLoRATrainer if config.KL_REGULARIZATION else Trainer
+    trainer_kwargs = dict(
         model=model,
         args=args,
         train_dataset=train_ds,
         eval_dataset=eval_ds,
         data_collator=collator,
     )
+    if trainer_cls is KLLoRATrainer:
+        trainer_kwargs["kl_coef"] = config.KL_COEFFICIENT
+    trainer = trainer_cls(**trainer_kwargs)
     trainer.train()
 
     config.ADAPTER_DIR.mkdir(exist_ok=True)
@@ -98,6 +104,8 @@ def _save_training_metadata(config, train_ds, eval_ds, trainer):
         "lora_dropout": config.LORA_DROPOUT,
         "use_4bit": config.USE_4BIT,
         "seed": config.SEED,
+        "kl_regularization": config.KL_REGULARIZATION,
+        "kl_coefficient": config.KL_COEFFICIENT,
         "adapter_dir": str(config.ADAPTER_DIR),
         "trained_at": datetime.now().isoformat(timespec="seconds"),
     }

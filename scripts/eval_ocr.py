@@ -10,6 +10,7 @@ from jiwer import cer, wer
 from PIL import Image
 
 from configs.configs import Configs
+from src.data.dataset import detect_columns
 from src.infer.predict import load_ocr_model, predict_image
 from src.utils.logging import setup_file_logging
 
@@ -40,13 +41,14 @@ def main():
         ds = load_dataset("5CD-AI/Viet-Handwriting-OCR-v2", split=config.TEST_SPLIT, token=config.HF_TOKEN or None)
 
     ds = ds.select(range(min(args.num_test, len(ds))))
+    image_col, text_col = detect_columns(ds)
     texts, preds = [], []
     for row in ds:
-        img = row["image"].convert("RGB")
+        img = row[image_col].convert("RGB")
         pred = predict_image(config, model, processor, img)
-        texts.append(row["text"])
+        texts.append(row[text_col])
         preds.append(pred)
-        print(f"GT : {row['text']}")
+        print(f"GT : {row[text_col]}")
         print(f"PR : {pred}")
         print("-" * 60)
 
