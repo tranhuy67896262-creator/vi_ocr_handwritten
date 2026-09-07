@@ -83,6 +83,16 @@ if errorlevel 1 (
 )
 
 "%PY%" --version
+
+REM torchao >=0.16: peft crash ImportError khi gan adapter neu dinh ban cu cua Colab.
+REM Chi can cho UI - OCR. Cai best-effort, loi van mo UI tiep.
+REM Viet phang, khong block if - ngoac don trong block gay vo parser.
+if not defined DO_UI goto :torchao_skip
+"%PY%" -c "import torchao; v=torchao.__version__.split('.'); assert (int(v[0]),int(v[1]))>=(0,16)" >nul 2>&1
+if not errorlevel 1 goto :torchao_skip
+uv pip install --python "%PY%" "torchao>=0.16" >nul 2>&1
+if errorlevel 1 echo [WARN] Bo qua torchao
+:torchao_skip
 "%PY%" -c "import sys; assert sys.version_info>=(3,10)" >nul 2>&1
 if errorlevel 1 echo [WARN] Can Python ^>= 3.10 - da test ky tren 3.13.x
 

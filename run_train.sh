@@ -86,6 +86,12 @@ if [ -n "$DO_UI" ]; then
         echo "Dang cai gradio (toi thieu cho UI)..."
         uv pip install --python "$PYTHON" gradio python-dotenv pymupdf python-docx
     fi
+    # torchao >=0.16: peft crash ImportError khi gan adapter neu dinh ban cu cua Colab.
+    # Cai best-effort - Windows CPU khong co wheel thi bo qua, van mo UI tiep.
+    if ! "$PYTHON" -c "import torchao; v=torchao.__version__.split('.'); assert (int(v[0]), int(v[1])) >= (0, 16)" 2>/dev/null; then
+        echo "Dang cap nhat torchao - peft yeu cau >=0.16 de gan adapter..."
+        uv pip install --python "$PYTHON" "torchao>=0.16" 2>/dev/null || echo "[WARN] Bo qua torchao."
+    fi
     "$PYTHON" scripts/ui.py
     exit 0
 fi

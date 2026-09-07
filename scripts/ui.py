@@ -165,7 +165,7 @@ def build_app():
                     ("Full (50k+ ảnh)", 0),
                     ("35k ảnh", 35000),
                     ("10k ảnh", 10000),
-                    ("100 ảnh (test nhanh)", 100),
+                    ("100 ảnh", 100),
                 ],
                 value=0, label="Cỡ data train",
             )

@@ -13,6 +13,9 @@ accelerate>=1.1
 peft>=0.14
 trl>=0.14
 bitsandbytes>=0.45
+# peft crash ImportError khi gan LoRA adapter neu dinh torchao cu (Colab cai san 0.10.0,
+# yeu cau >0.16.0). Windows bo qua (khong co wheel / khong can: thieu thi peft tu bo qua).
+torchao>=0.16; sys_platform != "win32"
 datasets>=3.0
 sentencepiece>=0.2.0
 tiktoken>=0.8
