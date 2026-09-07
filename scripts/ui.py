@@ -193,6 +193,7 @@ def build_app():
                     ("35k ảnh", 35000),
                     ("10k ảnh", 10000),
                     ("100 ảnh", 100),
+                    ("10 ảnh (test pipeline)", 10),
                 ],
                 value=0, label="Cỡ data train",
             )
