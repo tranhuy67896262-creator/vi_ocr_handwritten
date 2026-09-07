@@ -229,6 +229,103 @@ def export_gguf_ui(adapter, model):
                _hidden, "⚠️ Thất bại — xem Log.")
 
 
+def push_gguf_ui(hub_repo):
+    """Push file .gguf mới nhất lên Hugging Face Hub để có link tải nhanh/ổn định."""
+    hub_repo = (hub_repo or "").strip()
+    if "/" not in hub_repo:
+        return "Nhập repo id dạng `owner/repo` (vd `username/qwen25vl-3b-vi-hwr-gguf`)."
+    config = Configs()
+    if not config.HF_TOKEN:
+        return "Chưa có HF_TOKEN — sang tab Settings lưu token trước."
+    gguf = _latest_gguf()
+    if not gguf:
+        return "Chưa có file .gguf — bấm Download file .gguf để export trước."
+    try:
+        from huggingface_hub import HfApi
+        api = HfApi(token=config.HF_TOKEN)
+        api.create_repo(hub_repo, exist_ok=True, token=config.HF_TOKEN)
+        name = Path(gguf).name
+        api.upload_file(path_or_fileobj=gguf, path_in_repo=name,
+                        repo_id=hub_repo, token=config.HF_TOKEN)
+        return (f"✅ Đã push: https://huggingface.co/{hub_repo}/blob/main/{name}\n"
+                f"Tải từ link đó (nhanh, hỗ trợ resume).")
+    except Exception as exc:
+        return f"[ERROR] Push thất bại: {exc}"
+
+
+def push_adapter_ui(hub_repo, adapter):
+    """Push thư mục adapter local lên Hugging Face Hub."""
+    hub_repo = (hub_repo or "").strip()
+    if "/" not in hub_repo:
+        return "Nhập repo id dạng `owner/repo` (vd `username/qwen25vl-3b-vi-hwr-lora`)."
+    config = Configs()
+    if not config.HF_TOKEN:
+        return "Chưa có HF_TOKEN — sang tab Settings lưu token trước."
+    adapter = (adapter or "").strip() or str(config.ADAPTER_DIR)
+    src = Path(adapter)
+    if not src.exists():
+        return (f"Adapter `{adapter}` không có local (repo Hub hoặc sai path) — "
+                f"không có gì để push.")
+    try:
+        from huggingface_hub import HfApi
+        api = HfApi(token=config.HF_TOKEN)
+        api.create_repo(hub_repo, exist_ok=True, token=config.HF_TOKEN)
+        api.upload_folder(folder_path=str(src), repo_id=hub_repo,
+                          token=config.HF_TOKEN)
+        return (f"✅ Đã push adapter: https://huggingface.co/{hub_repo}\n"
+                f"Dùng trực tiếp ở ô Adapter bằng repo id `{hub_repo}`.")
+    except Exception as exc:
+        return f"[ERROR] Push thất bại: {exc}"
+
+
+def _fmt_size(n):
+    for unit in ("B", "KB", "MB", "GB"):
+        if n < 1024 or unit == "GB":
+            return f"{n:.1f} {unit}"
+        n /= 1024
+
+
+def _dir_size(p):
+    p = Path(p)
+    return sum(f.stat().st_size for f in p.rglob("*") if f.is_file())
+
+
+def _check_hf_cached(repo_id, token):
+    """Repo HF đã cache đủ local chưa (không tải thêm). Trả về (ok, bytes)."""
+    try:
+        from huggingface_hub import snapshot_download
+        p = Path(snapshot_download(repo_id, local_files_only=True,
+                                   token=token or None))
+    except Exception:
+        return False, 0
+    return True, _dir_size(p)
+
+
+def check_model_ui(model, adapter):
+    """Kiểm tra base model + adapter đã có trong máy chưa (không tải gì thêm)."""
+    config = Configs()
+    model = (model or "").strip() or config.MODEL_NAME
+    adapter = (adapter or "").strip() or str(config.ADAPTER_DIR)
+    lines = []
+    ok, size = _check_hf_cached(model, config.HF_TOKEN)
+    if ok:
+        lines.append(f"✅ Base `{model}` — đã có ({_fmt_size(size)} trong cache).")
+    else:
+        lines.append(f"❌ Base `{model}` — chưa đủ trong máy, lần dùng đầu sẽ phải tải.")
+    ap = Path(adapter)
+    if ap.exists():
+        lines.append(f"✅ Adapter local `{adapter}` ({_fmt_size(_dir_size(ap))}).")
+    elif "/" in adapter:
+        ok2, size2 = _check_hf_cached(adapter, config.HF_TOKEN)
+        if ok2:
+            lines.append(f"✅ Adapter Hub `{adapter}` — đã có ({_fmt_size(size2)} trong cache).")
+        else:
+            lines.append(f"❌ Adapter Hub `{adapter}` — chưa tải, lần dùng đầu sẽ phải tải.")
+    else:
+        lines.append(f"❌ Adapter `{adapter}` — không thấy local, cũng không phải repo id.")
+    return "\n".join(lines)
+
+
 # ---------------- Settings (HF token) ----------------
 
 def _token_path():
@@ -363,6 +460,18 @@ def build_app():
                 value=_gguf0, visible=bool(_gguf0))
             gguf_btn.click(export_gguf_ui, inputs=[export_adapter, export_model],
                            outputs=[export_log, dl_gguf, gguf_status])
+
+            gr.Markdown("### ⬆ Push GGUF lên Hub (link tải nhanh, ổn định, vĩnh viễn)")
+            hub_repo_in = gr.Textbox(label="Repo Hub (owner/repo)",
+                                     placeholder="username/qwen25vl-3b-vi-hwr-gguf")
+            push_btn = gr.Button("⬆ Push file .gguf lên Hub", variant="secondary")
+            push_msg = gr.Markdown()
+            push_btn.click(push_gguf_ui, inputs=[hub_repo_in], outputs=push_msg)
+
+            push_ad_btn = gr.Button("⬆ Push adapter lên Hub", variant="secondary")
+            push_ad_msg = gr.Markdown()
+            push_ad_btn.click(push_adapter_ui, inputs=[hub_repo_in, export_adapter],
+                              outputs=push_ad_msg)
 
         with gr.Tab("Settings"):
             tok_status = gr.Markdown(value=token_status())
