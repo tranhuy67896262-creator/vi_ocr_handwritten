@@ -104,9 +104,9 @@ def token_status():
 def save_token(token):
     tok = (token or "").strip()
     if not tok:
-        return "Token rỗng — chưa lưu."
+        return "Token rỗng — chưa lưu.", token_status()
     _token_path().write_text(f"HF_TOKEN = {tok}\n", encoding="utf-8")
-    return f"✅ Đã lưu token vào {_token_path()}"
+    return f"✅ Đã lưu token vào {_token_path()}", token_status()
 
 
 # ---------------- App ----------------
@@ -144,8 +144,22 @@ def build_app():
             ocr_btn.click(ocr_ui, inputs=[image, adapter_in], outputs=ocr_out)
 
         with gr.Tab("Eval CER/WER"):
+            gr.Markdown(
+                "Dataset nguồn có **50k+ ảnh**. Chọn **100 mẫu** để test nhanh (vài phút), "
+                "**10k / 35k** để kết quả chắc hơn, **Full** để đánh giá toàn bộ test split "
+                "(rất lâu — eval OCR từng ảnh). "
+                "**CER/WER càng thấp càng tốt.**"
+            )
             with gr.Row():
-                num_test = gr.Number(value=100, precision=0, label="Số mẫu test")
+                num_test = gr.Radio(
+                    choices=[
+                        ("100 mẫu (nhanh)", 100),
+                        ("10k mẫu", 10000),
+                        ("35k mẫu", 35000),
+                        ("Full test split (rất lâu!)", 1000000000),
+                    ],
+                    value=100, label="Số mẫu test",
+                )
                 eval_adapter = gr.Textbox(value=str(cfg.ADAPTER_DIR), label="Adapter")
             eval_btn = gr.Button("📊 Eval", variant="primary")
             eval_log = gr.Textbox(label="Log", lines=20, max_lines=100)
