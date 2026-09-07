@@ -1,6 +1,5 @@
 import os
 import re
-import shutil
 import subprocess
 import sys
 from pathlib import Path
@@ -170,8 +169,26 @@ def _latest_gguf():
     return str(pick)
 
 
+def _merge_is_fresh(merge_dir, adapter):
+    """Merged còn dùng được nếu có safetensors và mới hơn adapter local.
+    Adapter là repo Hub (không có local) thì luôn merge lại cho chắc."""
+    m = Path(merge_dir)
+    if not m.exists() or not list(m.glob("*.safetensors")):
+        return False
+    src = Path(adapter)
+    if not src.exists():
+        return False
+
+    def _newest(p):
+        fs = [f for f in p.rglob("*") if f.is_file()]
+        return max((f.stat().st_mtime for f in fs), default=0)
+
+    return _newest(m) >= _newest(src)
+
+
 def export_gguf_ui(adapter, model):
-    """Full chain: merge adapter -> convert GGUF -> quantize. Chỉ Linux/Colab."""
+    """Nút Download .gguf: bỏ qua merge nếu thư mục merged còn mới,
+    rồi convert + quantize. Chỉ Linux/Colab."""
     if sys.platform == "win32":
         yield ("Export GGUF cần Linux/Colab (build llama.cpp) — "
                "không chạy trên Windows."), gr.DownloadButton(visible=False)
@@ -182,11 +199,15 @@ def export_gguf_ui(adapter, model):
     model = (model or "").strip() or config.MODEL_NAME
     merge_dir = str(PROJECT_ROOT / "models" / f"{Path(adapter).name}-merged")
     log = ""
-    cmd1 = [sys.executable, str(SCRIPT / "export_merged.py"),
-            "--adapter", adapter, "--model", model, "--output", merge_dir]
-    for chunk in _run(cmd1, "> " + " ".join(cmd1) + "\n"):
-        log = chunk
+    if _merge_is_fresh(merge_dir, adapter):
+        log = f"Dùng merged có sẵn (mới hơn adapter): {merge_dir}\n"
         yield log, gr.DownloadButton(visible=False)
+    else:
+        cmd1 = [sys.executable, str(SCRIPT / "export_merged.py"),
+                "--adapter", adapter, "--model", model, "--output", merge_dir]
+        for chunk in _run(cmd1, "> " + " ".join(cmd1) + "\n"):
+            log = chunk
+            yield log, gr.DownloadButton(visible=False)
     cmd2 = ["bash", str(SCRIPT / "export_gguf.sh"), merge_dir]
     for chunk in _run(cmd2, log):
         log = chunk
@@ -199,23 +220,6 @@ def export_gguf_ui(adapter, model):
     else:
         yield (log + "\n[WARN] Không thấy file .gguf — xem log convert.",
                gr.DownloadButton(visible=False))
-
-
-def zip_adapter_ui(adapter):
-    """Nén thư mục adapter local thành .zip để tải về qua UI."""
-    config = Configs()
-    adapter = (adapter or "").strip() or str(config.ADAPTER_DIR)
-    src = Path(adapter)
-    if "/" in adapter and not src.exists():
-        return ("Adapter là repo Hub — không nén local được. "
-                "Tải trực tiếp từ trang Hub của repo."), gr.DownloadButton(visible=False)
-    if not src.exists():
-        return f"Không thấy thư mục adapter: {adapter}", gr.DownloadButton(visible=False)
-    zip_path = shutil.make_archive(str(PROJECT_ROOT / "models" / src.name),
-                                   "zip", root_dir=str(src.parent), base_dir=src.name)
-    return (f"✅ Đã nén: {zip_path}",
-            gr.DownloadButton(value=zip_path, visible=True,
-                              label=f"⬇ Tải {Path(zip_path).name}"))
 
 
 # ---------------- Settings (HF token) ----------------
@@ -340,25 +344,17 @@ def build_app():
             export_model = gr.Dropdown(choices=MODEL_CHOICES, value=cfg.MODEL_NAME,
                                        label="Base model", allow_custom_value=True)
             export_model.change(sync_adapter, inputs=[export_model, export_adapter], outputs=export_adapter)
-            export_btn = gr.Button("📦 Export full model", variant="primary")
+            export_btn = gr.Button("📦 Export ra thư mục (full model)", variant="primary")
             export_log = gr.Textbox(label="Log", lines=20, max_lines=30, autoscroll=True, elem_classes=["log-scroll"])
             export_btn.click(export_ui, inputs=[export_adapter, export_model], outputs=export_log)
 
-            gguf_btn = gr.Button("📦 Export GGUF (merge + convert + quantize, chỉ Linux/Colab)",
-                                 variant="primary")
+            gguf_btn = gr.Button("⬇ Download file .gguf", variant="primary")
             _gguf0 = _latest_gguf()
             dl_gguf = gr.DownloadButton(
                 f"⬇ Tải {Path(_gguf0).name}" if _gguf0 else "⬇ Tải file GGUF",
                 value=_gguf0, visible=bool(_gguf0))
             gguf_btn.click(export_gguf_ui, inputs=[export_adapter, export_model],
                            outputs=[export_log, dl_gguf])
-
-            with gr.Row():
-                zip_btn = gr.Button("🗜 Nén adapter (.zip) để tải về")
-                zip_msg = gr.Markdown()
-            dl_adapter = gr.DownloadButton("⬇ Tải adapter (.zip)", visible=False)
-            zip_btn.click(zip_adapter_ui, inputs=[export_adapter],
-                          outputs=[zip_msg, dl_adapter])
 
         with gr.Tab("Settings"):
             tok_status = gr.Markdown(value=token_status())
