@@ -44,6 +44,8 @@ def train_ui(dataset, model, data_size):
     if data_size and int(data_size) > 0:
         cmd += ["--max-samples", str(int(data_size))]
     yield from _run(cmd, "> " + " ".join(cmd) + "\n")
+    # Train xong -> xoa cache model OCR để lần OCR sau load đúng adapter mới nhất.
+    _OCR_CACHE.clear()
 
 
 # ---------------- OCR ----------------
@@ -140,7 +142,9 @@ def build_app():
     with gr.Blocks(title="Vi-OCR-Handwritten UI") as demo:
         gr.Markdown(
             "# 🚀 Vi-OCR-Handwritten — QLoRA fine-tune Qwen2.5-VL\n"
-            "Train / OCR / Eval / Export. Log hiển thị realtime."
+            "Train / OCR / Eval / Export. Log hiển thị realtime.\n"
+            "☁️ Dùng ké GPU Colab: "
+            "[mở notebook Colab](https://colab.research.google.com/notebook#fileId=https%3A//huggingface.co/Qwen/Qwen2.5-VL-7B-Instruct.ipynb)"
         )
 
         with gr.Tab("Train"):
