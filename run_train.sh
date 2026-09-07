@@ -70,6 +70,9 @@ else
 fi
 unset VIRTUAL_ENV
 echo "Python: $("$PYTHON" --version 2>/dev/null || echo "khong xac dinh")"
+if ! "$PYTHON" -c "import sys; assert sys.version_info >= (3, 10)" 2>/dev/null; then
+    echo "[WARN] Can Python >= 3.10 - da test ky tren 3.13.x."
+fi
 
 # Chế độ --ui: lên UI ngay, KHÔNG cài torch-CUDA / requirements / data.
 # Chỉ cần gradio + dotenv để UI mở nhanh. Nút Train/OCR trong UI sẽ báo lỗi

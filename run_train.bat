@@ -80,6 +80,8 @@ if errorlevel 1 (
 )
 
 "%PY%" --version
+"%PY%" -c "import sys; assert sys.version_info>=(3,10)" >nul 2>&1
+if errorlevel 1 echo [WARN] Can Python ^>= 3.10 - da test ky tren 3.13.x
 
 REM Che do chi mo UI --ui: len UI ngay, KHONG tai torch-CUDA/requirements/data.
 REM Chi can gradio + dotenv. Nut Train/OCR trong UI se bao loi neu thieu deps.
