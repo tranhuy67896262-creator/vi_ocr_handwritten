@@ -26,6 +26,7 @@ Fine-tune **Qwen2.5-VL-3B-Instruct** bằng **QLoRA** cho chữ viết tay tiế
 
 ## Quirk môi trường
 
-- Python 3.13 / Windows: train thật chạy **WSL2/GPU cloud**. 3B ≈ 8GB+ (vừa T4 15GB); 7B cần ~16GB+; export merged cần gấp ~2x.
+- Python 3.13 / Windows: train thật chạy **WSL2/GPU cloud**. 3B full-precision (bf16, không QLoRA vì `bitsandbytes` chưa có trên Windows) chiếm ~14 GB — GPU tiểu dùng 14.56 GB (như T4 16GB consumer) **sẽ OOM** nếu để KL regularization bật (`train_qlora.py` tự set `PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True`). Chạy smoke test nhanh trên Windows được: `python scripts/train_qlora.py --max-samples 100 --no-kl --batch-size 1 --max-seq-len 512`. 7B cần ~16GB+; export merged cần gấp ~2x.
+- `run_train.sh` auto-cài `flash-attn` (best-effort, Linux only) rồi tăng `--batch-size` dần cho A100/H100.
 - `HF_TOKEN` đọc env trước, fallback `.env.dev` mỗi lần khởi tạo `Configs()` (tránh stale khi lưu token giữa session). Dataset gốc gated — accept điều khoản trên HF.
 - Comment/docstring tiếng Việt.
