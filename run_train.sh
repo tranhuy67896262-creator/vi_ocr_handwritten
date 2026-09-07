@@ -2,6 +2,11 @@
 set -euo pipefail
 cd "$(dirname "$0")"
 
+# Portable qua máy khác: cache và target có thể nằm khác filesystem
+# (vd mount Drive, ổ đĩa khác) -> copy thay vì hardlink, tắt warning
+# "Failed to hardlink files; falling back to full copy".
+export UV_LINK_MODE="${UV_LINK_MODE:-copy}"
+
 echo "=============================================="
 echo "  Vi-OCR-Handwritten - Setup & Train (Colab/Linux)"
 echo "=============================================="
@@ -46,7 +51,7 @@ echo "HF cache: $HF_HOME"
 # Cài uv nếu chưa có (thay pip/venv — nhanh hơn nhiều)
 if ! command -v uv >/dev/null 2>&1; then
     echo "Dang cai uv..."
-    python -m pip install -q uv
+    python -m pip install -q uv 2>/dev/null || python3 -m pip install -q uv 2>/dev/null || pip install -q uv
 fi
 
 # Chọn python: ưu tiên venv .venv (tạo bằng uv), không thì python hệ thống (đường dẫn tuyệt đối
@@ -56,7 +61,7 @@ if [ -x ".venv/bin/python" ]; then
 elif [ -x ".venv/Scripts/python.exe" ]; then
     PYTHON=".venv/Scripts/python.exe"
 else
-    PYTHON="$(command -v python)"
+    PYTHON="$(command -v python || command -v python3 || echo python)"
 fi
 unset VIRTUAL_ENV
 echo "Python: $("$PYTHON" --version 2>/dev/null || echo "khong xac dinh")"
@@ -64,6 +69,19 @@ echo "Python: $("$PYTHON" --version 2>/dev/null || echo "khong xac dinh")"
 # Kiểm tra GPU
 if ! "$PYTHON" -c "import torch; assert torch.cuda.is_available()" 2>/dev/null; then
     echo "[WARN] Khong thay GPU. Tren Colab: Runtime > Change runtime type > GPU (T4/A100/H100)."
+fi
+
+# Chế độ --ui: lên UI ngay, KHÔNG cài torch-CUDA / requirements / data.
+# Chỉ cần gradio + dotenv để UI mở nhanh. Nút Train/OCR trong UI sẽ báo lỗi
+# nếu thiếu deps — khi đó chạy lại script không --ui để cài full.
+if [ -n "$DO_UI" ]; then
+    echo "===== Mo UI Gradio (che do nhe: chua tai torch/data) ====="
+    if ! "$PYTHON" -c "import gradio, dotenv" 2>/dev/null; then
+        echo "Dang cai gradio (toi thieu cho UI)..."
+        uv pip install --python "$PYTHON" gradio python-dotenv
+    fi
+    "$PYTHON" scripts/ui.py
+    exit 0
 fi
 
 # Cài torch/torchvision bản CUDA nếu chưa có (PyPI mặc định là bản CPU)
@@ -85,16 +103,6 @@ echo "  Smoke test: $0 --max-samples 100"
 echo "  Train full: $0"
 echo "  Push Hub  : $0 --push --hub-repo <owner>/qwen25vl-7b-vi-hwr-lora"
 echo
-
-# Nếu chỉ muốn mở UI (không train): --ui
-if [ -n "$DO_UI" ]; then
-    echo "===== Mo UI Gradio ====="
-    if ! "$PYTHON" -c "import gradio" 2>/dev/null; then
-        uv pip install --python "$PYTHON" gradio
-    fi
-    "$PYTHON" scripts/ui.py
-    exit 0
-fi
 
 if [ ${#NEW_ARGS[@]} -gt 0 ]; then
     "$PYTHON" scripts/train_qlora.py "${NEW_ARGS[@]}"

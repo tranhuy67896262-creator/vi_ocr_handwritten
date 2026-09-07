@@ -4,7 +4,7 @@ import torch
 from peft import PeftModel
 from transformers import Qwen2_5_VLForConditionalGeneration
 
-from src.model.load import load_processor
+from src.modeling.load import load_processor
 
 
 def load_ocr_model(config, adapter_dir=None):

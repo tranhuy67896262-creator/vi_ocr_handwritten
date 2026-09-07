@@ -31,9 +31,9 @@ Cách **thêm kiến thức mới mà không làm mất kiến thức gốc**: b
 
 ```
 configs/configs.py        # toàn bộ config (dataset, LoRA, training)
-src/data/dataset.py       # load + format dataset thành chat template Qwen
-src/data/collator.py      # chỉ tính loss trên phần assistant
-src/model/load.py         # load 4-bit + gắn LoRA
+src/datasets/dataset.py    # load + format dataset thành chat template Qwen
+src/datasets/collator.py   # chỉ tính loss trên phần assistant
+src/modeling/load.py       # load 4-bit + gắn LoRA
 src/train/trainer.py      # Trainer + lưu adapter
 src/infer/predict.py      # inference OCR
 scripts/train_qlora.py    # entry point train

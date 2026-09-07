@@ -5,7 +5,7 @@ from datetime import datetime
 import torch
 from transformers import Trainer, TrainingArguments
 
-from src.data.collator import DataCollatorForQwenVL
+from src.datasets.collator import DataCollatorForQwenVL
 from src.train.kl_trainer import KLLoRATrainer
 from src.utils.logging import setup_file_logging
 

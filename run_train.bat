@@ -2,6 +2,14 @@
 setlocal
 cd /d "%~dp0"
 
+REM Portable qua may khac: uv copy thay vi hardlink (tat warning
+REM "Failed to hardlink files" khi cache/project khac o dia).
+if not defined UV_LINK_MODE set "UV_LINK_MODE=copy"
+
+REM Cache HF trong project de de mang theo qua may khac (giong run_train.sh).
+if not defined HF_HOME set "HF_HOME=%CD%\.hf_cache"
+echo HF cache: %HF_HOME%
+
 echo ==========================================
 echo  Vi-OCR-Handwritten - Train QLoRA (Windows)
 echo ==========================================
@@ -18,11 +26,27 @@ REM Che do UI: --ui = chi cai moi truong + mo UI Gradio (khong train)
 set "DO_UI="
 echo %* | findstr /C:"--ui" >nul 2>&1 && set "DO_UI=1"
 
-REM Thu gom cac doi so con lai (vi %*% khong doi sau shift)
+REM Thu gom cac doi so con lai (vi %*% khong doi sau shift).
+REM Bo --ui / --eval[=N] ra khoi REST (co rieng cua wrapper, giong run_train.sh).
+set "DO_EVAL="
+set "EVAL_NUM=100"
 set "REST="
 :argloop
 if "%~1"=="" goto :argsdone
+if "%~1"=="--ui" goto :nextarg
+echo %~1 | findstr /R /C:"^--eval" >nul 2>&1
+if errorlevel 1 goto :notflag
+set "DO_EVAL=1"
+shift
+if "%~1"=="" goto :argloop
+set "ISNUM=1"
+for /f "delims=0123456789" %%c in ("%~1") do set "ISNUM="
+if not defined ISNUM goto :argloop
+set "EVAL_NUM=%~1"
+goto :nextarg
+:notflag
 set "REST=%REST% %~1"
+:nextarg
 shift
 goto :argloop
 :argsdone
@@ -44,6 +68,19 @@ if errorlevel 1 (
 )
 
 "%PY%" --version
+
+REM Che do chi mo UI --ui: len UI ngay, KHONG tai torch-CUDA/requirements/data.
+REM Chi can gradio + dotenv. Nut Train/OCR trong UI se bao loi neu thieu deps.
+if defined DO_UI (
+    echo Opening UI Gradio - light mode, chua tai torch/data...
+    "%PY%" -c "import gradio, dotenv" >nul 2>&1
+    if errorlevel 1 (
+        uv pip install --python "%PY%" gradio python-dotenv
+        if errorlevel 1 exit /b 1
+    )
+    "%PY%" scripts\ui.py
+    exit /b 0
+)
 
 REM Check torch has CUDA + torchvision (PyPI default is CPU build)
 "%PY%" -c "import torch, torchvision; assert torch.cuda.is_available()" >nul 2>&1
@@ -74,20 +111,16 @@ echo   Smoke test: %~nx0 --max-samples 100
 echo   Real train: run on Colab GPU via run_train.sh
 echo(
 
-REM Che do chi mo UI (--ui)
-if defined DO_UI (
-    echo Opening UI Gradio...
-    "%PY%" -c "import gradio" >nul 2>&1
-    if errorlevel 1 (
-        uv pip install --python "%PY%" gradio
-        if errorlevel 1 exit /b 1
-    )
-    "%PY%" scripts\ui.py
-    exit /b 0
-)
-
 "%PY%" scripts\train_qlora.py %REST%
 set EXIT_CODE=%ERRORLEVEL%
+if not "%EXIT_CODE%"=="0" exit /b %EXIT_CODE%
+
+REM --eval[=N]: chay eval CER/WER sau train (giong run_train.sh)
+if defined DO_EVAL (
+    echo ===== Eval CER/WER tren %EVAL_NUM% mau test =====
+    "%PY%" scripts\eval_ocr.py --num-test "%EVAL_NUM%"
+    set EXIT_CODE=%ERRORLEVEL%
+)
 
 echo(
 echo Done. Results at: models\qwen25vl-7b-vi-hwr-lora\  (see training_metadata.json + training.log)

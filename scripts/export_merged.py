@@ -10,7 +10,7 @@ from peft import PeftModel
 from transformers import Qwen2_5_VLForConditionalGeneration
 
 from configs.configs import Configs
-from src.model.load import load_processor
+from src.modeling.load import load_processor
 from src.utils.logging import log_and_exit, setup_file_logging
 
 

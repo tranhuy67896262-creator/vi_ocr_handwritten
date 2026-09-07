@@ -1,3 +1,4 @@
+import os
 import re
 import subprocess
 import sys
@@ -34,33 +35,12 @@ def _run(cmd, log=""):
 
 # ---------------- Train ----------------
 
-def train_ui(dataset, model, max_samples, epochs, lr, lora_r, lora_alpha,
-             batch_size, max_seq_len, no_kl, push, hub_repo):
+def train_ui(dataset, model):
     cmd = [sys.executable, str(SCRIPT / "train_qlora.py")]
     if dataset:
         cmd += ["--dataset", dataset]
     if model:
         cmd += ["--model", model]
-    if max_samples:
-        cmd += ["--max-samples", str(int(max_samples))]
-    if epochs:
-        cmd += ["--epochs", str(int(epochs))]
-    if lr:
-        cmd += ["--lr", str(lr)]
-    if lora_r:
-        cmd += ["--lora-r", str(int(lora_r))]
-    if lora_alpha:
-        cmd += ["--lora-alpha", str(int(lora_alpha))]
-    if batch_size:
-        cmd += ["--batch-size", str(int(batch_size))]
-    if max_seq_len:
-        cmd += ["--max-seq-len", str(int(max_seq_len))]
-    if no_kl:
-        cmd += ["--no-kl"]
-    if push:
-        cmd += ["--push"]
-    if hub_repo:
-        cmd += ["--hub-repo", hub_repo]
     yield from _run(cmd, "> " + " ".join(cmd) + "\n")
 
 
@@ -142,26 +122,17 @@ def build_app():
         with gr.Tab("Train"):
             with gr.Row():
                 dataset = gr.Textbox(value=cfg.DATASET_NAME, label="Dataset")
-                model = gr.Textbox(value=cfg.MODEL_NAME, label="Model")
-            with gr.Row():
-                max_samples = gr.Number(value=1000, precision=0, label="max-samples (0 = full)")
-                epochs = gr.Number(value=cfg.NUM_EPOCHS, precision=0, label="epochs")
-                lr = gr.Number(value=cfg.LEARNING_RATE, label="learning rate")
-            with gr.Row():
-                lora_r = gr.Number(value=cfg.LORA_R, precision=0, label="lora-r")
-                lora_alpha = gr.Number(value=cfg.LORA_ALPHA, precision=0, label="lora-alpha")
-                batch_size = gr.Number(value=cfg.BATCH_SIZE, precision=0, label="batch-size")
-                max_seq_len = gr.Number(value=cfg.MAX_SEQ_LEN, precision=0, label="max-seq-len")
-            with gr.Row():
-                no_kl = gr.Checkbox(value=not cfg.KL_REGULARIZATION, label="--no-kl (tắt KL, tiết kiệm VRAM)")
-                push = gr.Checkbox(value=False, label="--push lên Hub")
-                hub_repo = gr.Textbox(label="--hub-repo (owner/repo)")
+                model = gr.Dropdown(
+                    choices=["Qwen/Qwen2.5-VL-7B-Instruct",
+                             "Qwen/Qwen2.5-VL-3B-Instruct"],
+                    value=cfg.MODEL_NAME, label="Model",
+                    allow_custom_value=True,
+                )
             train_btn = gr.Button("▶ Train", variant="primary")
             train_log = gr.Textbox(label="Log", lines=20, max_lines=100)
             train_btn.click(
                 train_ui,
-                inputs=[dataset, model, max_samples, epochs, lr, lora_r, lora_alpha,
-                        batch_size, max_seq_len, no_kl, push, hub_repo],
+                inputs=[dataset, model],
                 outputs=train_log,
             )
 
@@ -202,4 +173,6 @@ def build_app():
 
 
 if __name__ == "__main__":
-    build_app().launch(server_name="0.0.0.0", share=True)
+    # GRADIO_SHARE=0 khi chay offline (khong tao link public). Mac dinh 1.
+    share = os.getenv("GRADIO_SHARE", "1") == "1"
+    build_app().launch(server_name="0.0.0.0", share=share)

@@ -5,9 +5,9 @@ from pathlib import Path
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(PROJECT_ROOT))
 
-from configs.configs import Configs
-from src.data.dataset import build_train_eval_datasets
-from src.model.load import build_lora_model, load_model_and_processor
+from configs.configs import Configs, _adapter_tag
+from src.datasets.dataset import build_train_eval_datasets
+from src.modeling.load import build_lora_model, load_model_and_processor
 from src.train.trainer import train
 from src.utils.logging import log_and_exit, setup_file_logging
 
@@ -38,6 +38,10 @@ def main():
         config.DATASET_NAME = args.dataset
     if args.model:
         config.MODEL_NAME = args.model
+        # ADAPTER_DIR là class attribute tính sẵn từ MODEL_NAME lúc định nghĩa —
+        # phải tính lại, không adapter 3B/7B sẽ ghi đè lẫn nhau.
+        config.ADAPTER_DIR = config.MODELS_DIR / f"qwen25vl-{_adapter_tag(args.model)}-vi-hwr-lora"
+        config.ADAPTER_DIR.mkdir(parents=True, exist_ok=True)
     if args.epochs is not None:
         config.NUM_EPOCHS = args.epochs
     if args.lr is not None:

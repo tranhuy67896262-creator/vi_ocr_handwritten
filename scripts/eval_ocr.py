@@ -10,7 +10,7 @@ from jiwer import cer, wer
 from PIL import Image
 
 from configs.configs import Configs
-from src.data.dataset import detect_columns
+from src.datasets.dataset import detect_columns
 from src.infer.predict import load_ocr_model, predict_image
 from src.utils.logging import log_and_exit, setup_file_logging
 
