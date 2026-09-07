@@ -46,7 +46,12 @@ def train(config, model, processor, train_ds, eval_ds=None, push=False, hub_repo
     log_path = config.MODELS_DIR / "training.log"
     setup_file_logging(log_path)
 
-    collator = DataCollatorForQwenVL(processor, max_length=config.MAX_SEQ_LEN)
+    collator = DataCollatorForQwenVL(
+        processor,
+        max_length=config.MAX_SEQ_LEN,
+        min_pixels=config.MIN_PIXELS,
+        max_pixels=config.MAX_PIXELS,
+    )
     eff_batch = config.BATCH_SIZE * config.GRADIENT_ACCUMULATION_STEPS
     num_train_steps = None
     if train_ds is not None:

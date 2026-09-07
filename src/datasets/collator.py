@@ -4,9 +4,11 @@ class DataCollatorForQwenVL:
     max_length: giới hạn độ dài chuỗi (truncate) để kiểm soát VRAM.
     """
 
-    def __init__(self, processor, max_length=None):
+    def __init__(self, processor, max_length=None, min_pixels=None, max_pixels=None):
         self.processor = processor
         self.max_length = max_length
+        self.min_pixels = min_pixels
+        self.max_pixels = max_pixels
 
     def __call__(self, examples):
         texts = [
@@ -22,6 +24,8 @@ class DataCollatorForQwenVL:
             truncation=True,
             max_length=self.max_length,
             add_special_tokens=False,
+            min_pixels=self.min_pixels,
+            max_pixels=self.max_pixels,
         )
 
         labels = batch["input_ids"].clone()

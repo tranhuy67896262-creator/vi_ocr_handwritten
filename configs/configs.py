@@ -46,8 +46,14 @@ class Configs:
     TRAIN_SPLIT = "train"
     TEST_SPLIT = "test"
     VAL_RATIO = 0.002
+    # Chuẩn hóa mọi ảnh về tỉ lệ khổ A4 (pad nền trắng, không crop) trước khi
+    # vào processor — áp dụng cả train (dataset.py) lẫn inference (predict.py).
+    A4_STANDARDIZE = True
     MIN_PIXELS = 256 * 28 * 28
-    MAX_PIXELS = 1280 * 28 * 28
+    # 768 tile 28x28 ~= 768 image-token: vừa khung MAX_SEQ_LEN=1024 (cả text).
+    # Để 1280 như trước → image-token đã ~1456, truncation cắt vào vùng ảnh
+    # gây crash "Mismatch in image token count" + train chậm (50s+/it).
+    MAX_PIXELS = 768 * 28 * 28
 
     # Training (QLoRA: giữ nguyên kiến thức model gốc)
     NUM_EPOCHS = 1

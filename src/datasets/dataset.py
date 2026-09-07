@@ -1,5 +1,7 @@
 from datasets import load_dataset
 
+from src.utils.image import standardize_a4
+
 
 def detect_columns(ds):
     """Tự động tìm cột ảnh (Image) và cột văn bản (text) trong dataset."""
@@ -30,8 +32,12 @@ def detect_columns(ds):
     return image_col, text_col
 
 
-def convert_to_chat(example, image_col, text_col, system_prompt):
+def convert_to_chat(example, image_col, text_col, system_prompt,
+                    a4_standardize=True, max_pixels=None):
     """Chuyển 1 mẫu (ảnh + text) thành chat template của Qwen2.5-VL."""
+    img = example[image_col]
+    if a4_standardize:
+        img = standardize_a4(img, max_pixels=max_pixels)
     return {
         "messages": [
             {
@@ -46,7 +52,7 @@ def convert_to_chat(example, image_col, text_col, system_prompt):
                 "content": [{"type": "text", "text": example[text_col]}],
             },
         ],
-        "images": [example[image_col]],
+        "images": [img],
     }
 
 
@@ -74,7 +80,8 @@ def build_train_eval_datasets(config, max_samples=None):
     print(f"Cột ảnh: {image_col} | Cột văn bản: {text_col}")
 
     ds = ds.map(
-        lambda ex: convert_to_chat(ex, image_col, text_col, config.SYSTEM_PROMPT),
+        lambda ex: convert_to_chat(ex, image_col, text_col, config.SYSTEM_PROMPT,
+                                   config.A4_STANDARDIZE, config.MAX_PIXELS),
         remove_columns=ds.column_names,
     )
 

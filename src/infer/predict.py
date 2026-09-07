@@ -5,6 +5,7 @@ from peft import PeftModel
 from transformers import Qwen2_5_VLForConditionalGeneration
 
 from src.modeling.load import load_processor
+from src.utils.image import standardize_a4
 
 
 def load_ocr_model(config, adapter_dir=None):
@@ -34,6 +35,9 @@ def load_ocr_model(config, adapter_dir=None):
 
 def predict_image(config, model, processor, image, system_prompt=None):
     """OCR 1 ảnh PIL -> trả về chuỗi chữ viết tay đọc được."""
+    image = image.convert("RGB")
+    if config.A4_STANDARDIZE:
+        image = standardize_a4(image, max_pixels=config.MAX_PIXELS)
     messages = [
         {
             "role": "user",
@@ -44,7 +48,10 @@ def predict_image(config, model, processor, image, system_prompt=None):
         }
     ]
     text = processor.apply_chat_template(messages, tokenize=False, add_generation_prompt=True)
-    inputs = processor(text=[text], images=[image], return_tensors="pt", add_special_tokens=False)
+    inputs = processor(
+        text=[text], images=[image], return_tensors="pt", add_special_tokens=False,
+        min_pixels=config.MIN_PIXELS, max_pixels=config.MAX_PIXELS,
+    )
     inputs = {k: v.to(model.device) if hasattr(v, "to") else v for k, v in inputs.items()}
 
     with torch.no_grad():
