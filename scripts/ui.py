@@ -252,7 +252,7 @@ def push_gguf_ui(hub_repo):
         return (f"✅ Đã push: https://huggingface.co/{hub_repo}/blob/main/{name}\n"
                 f"Tải từ link đó (nhanh, hỗ trợ resume).")
     except Exception as exc:
-        return f"[ERROR] Push thất bại: {exc}"
+        return _push_error(exc)
 
 
 def push_adapter_ui(hub_repo, adapter):
@@ -277,7 +277,7 @@ def push_adapter_ui(hub_repo, adapter):
         return (f"✅ Đã push adapter: https://huggingface.co/{hub_repo}\n"
                 f"Dùng trực tiếp ở ô Adapter bằng repo id `{hub_repo}`.")
     except Exception as exc:
-        return f"[ERROR] Push thất bại: {exc}"
+        return _push_error(exc)
 
 
 def _fmt_size(n):
@@ -344,12 +344,34 @@ def token_status():
     return "❌ Chưa có token. Nhập vào ô bên dưới rồi bấm Lưu."
 
 
+def _token_username(token):
+    """Tên tài khoản sở hữu token (None nếu không lấy được, vd offline)."""
+    try:
+        from huggingface_hub import HfApi
+        info = HfApi(token=token).whoami()
+        return info.get("name") if isinstance(info, dict) else getattr(info, "name", None)
+    except Exception:
+        return None
+
+
+def _push_error(exc):
+    s = str(exc)
+    if "403" in s or "Forbidden" in s:
+        return (f"[ERROR] Push thất bại (403 - không có quyền): {s}\n"
+                f"Nguyên nhân thường gặp: repo owner khác tài khoản của token, "
+                f"hoặc token loại Read (cần Write). Xem tên tài khoản ở tab Settings.")
+    return f"[ERROR] Push thất bại: {exc}"
+
+
 def save_token(token):
     tok = (token or "").strip()
     if not tok:
         return "Token rỗng — chưa lưu.", token_status()
     _token_path().write_text(f"HF_TOKEN = {tok}\n", encoding="utf-8")
-    return f"✅ Đã lưu token vào {_token_path()}", token_status()
+    user = _token_username(tok)
+    extra = (f" Tài khoản: `{user}` — push repo phải dùng owner là `{user}`."
+             if user else "")
+    return f"✅ Đã lưu token vào {_token_path()}.{extra}", token_status()
 
 
 # ---------------- App ----------------
