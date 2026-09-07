@@ -91,6 +91,11 @@ python scripts/train_qlora.py --max-samples 100
 python scripts/train_qlora.py
 python scripts/train_qlora.py --model Qwen/Qwen2.5-VL-7B-Instruct
 
+# Run dài (Colab hay đứt): lưu checkpoint dày + resume khi chạy lại
+python scripts/train_qlora.py --save-steps 100
+python scripts/train_qlora.py --resume            # tiếp tục từ checkpoint mới nhất
+python scripts/train_qlora.py --resume --save-steps 100
+
 # Ghi đè config nhanh từ CLI
 python scripts/train_qlora.py --epochs 2 --lr 1e-5 --lora-r 16 --lora-alpha 32
 

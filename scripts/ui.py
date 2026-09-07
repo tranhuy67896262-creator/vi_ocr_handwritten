@@ -55,7 +55,7 @@ def _run(cmd, log=""):
 
 # ---------------- Train ----------------
 
-def train_ui(dataset, model, data_size):
+def train_ui(dataset, model, data_size, resume):
     _free_gpu()
     cmd = [sys.executable, str(SCRIPT / "train_qlora.py")]
     if dataset:
@@ -64,6 +64,8 @@ def train_ui(dataset, model, data_size):
         cmd += ["--model", model]
     if data_size and int(data_size) > 0:
         cmd += ["--max-samples", str(int(data_size))]
+    if resume:
+        cmd += ["--resume"]
     yield from _run(cmd, "> " + " ".join(cmd) + "\n")
     # Train xong -> xoa cache model OCR để lần OCR sau load đúng adapter mới nhất.
     _OCR_CACHE.clear()
@@ -384,6 +386,10 @@ def build_app():
                 ],
                 value=0, label="Cỡ data train",
             )
+            resume_ckpt = gr.Checkbox(
+                value=False,
+                label="Tiếp tục từ checkpoint (tick khi chạy lại sau đứt giữa chừng)",
+            )
             gr.Markdown(
                 "🔗 Dataset: [5CD-AI/Viet-Handwriting-OCR-v2](https://huggingface.co/datasets/5CD-AI/Viet-Handwriting-OCR-v2) | "
                 "Models: [Qwen2.5-VL-7B-Instruct](https://huggingface.co/Qwen/Qwen2.5-VL-7B-Instruct) · "
@@ -393,7 +399,7 @@ def build_app():
             train_log = gr.Textbox(label="Log", lines=20, max_lines=30, autoscroll=True, elem_classes=["log-scroll"])
             train_btn.click(
                 train_ui,
-                inputs=[dataset, model, data_size],
+                inputs=[dataset, model, data_size, resume_ckpt],
                 outputs=train_log,
             )
 

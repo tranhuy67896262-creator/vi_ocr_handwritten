@@ -26,6 +26,10 @@ def main():
     parser.add_argument("--lora-r", type=int, default=None)
     parser.add_argument("--lora-alpha", type=int, default=None)
     parser.add_argument("--max-samples", type=int, default=None, help="Giới hạn mẫu để test nhanh")
+    parser.add_argument("--resume", action="store_true",
+                        help="Tiếp tục từ checkpoint mới nhất (đứt giữa chừng train tiếp, không mất công)")
+    parser.add_argument("--save-steps", type=int, default=None,
+                        help="Lưu checkpoint mỗi N steps (mặc định: từ config; run dài nên để ~100)")
     parser.add_argument("--no-kl", action="store_true",
                         help="Tắt KL-regularization (chống mất kiến thức) để tiết kiệm VRAM")
     parser.add_argument("--push", action="store_true", help="Push adapter lên Hugging Face Hub")
@@ -80,7 +84,7 @@ def main():
     try:
         train(config, model, processor, train_ds, eval_ds,
               push=args.push or config.PUSH_TO_HUB, hub_repo_id=config.HUB_ADAPTER_ID,
-              use_4bit=use_4bit)
+              use_4bit=use_4bit, resume=args.resume, save_steps=args.save_steps)
     except Exception as exc:
         log_and_exit(exc, stage="TRAIN")
 

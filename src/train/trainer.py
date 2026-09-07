@@ -1,6 +1,7 @@
 import json
 import math
 from datetime import datetime
+from pathlib import Path
 
 import torch
 from transformers import Trainer, TrainingArguments
@@ -40,9 +41,25 @@ def get_training_args(config, output_dir, use_4bit, num_train_steps=None):
     return TrainingArguments(**args)
 
 
-def train(config, model, processor, train_ds, eval_ds=None, push=False, hub_repo_id="", use_4bit=None):
+def _latest_checkpoint(checkpoints_dir):
+    """Checkpoint `checkpoint-N` lớn nhất, hoặc None nếu chưa có."""
+    ckpts = []
+    for p in Path(checkpoints_dir).glob("checkpoint-*"):
+        if not p.is_dir():
+            continue
+        try:
+            ckpts.append((int(p.name.split("-")[-1]), str(p)))
+        except ValueError:
+            continue
+    return max(ckpts)[1] if ckpts else None
+
+
+def train(config, model, processor, train_ds, eval_ds=None, push=False, hub_repo_id="",
+          use_4bit=None, resume=False, save_steps=None):
     if use_4bit is None:
         use_4bit = config.USE_4BIT
+    if save_steps is not None:
+        config.SAVE_STEPS = save_steps
     log_path = config.MODELS_DIR / "training.log"
     setup_file_logging(log_path)
 
@@ -70,7 +87,14 @@ def train(config, model, processor, train_ds, eval_ds=None, push=False, hub_repo
     if trainer_cls is KLLoRATrainer:
         trainer_kwargs["kl_coef"] = config.KL_COEFFICIENT
     trainer = trainer_cls(**trainer_kwargs)
-    trainer.train()
+    resume_path = None
+    if resume:
+        resume_path = _latest_checkpoint(config.MODELS_DIR / "checkpoints")
+        if resume_path:
+            print(f"Tiếp tục từ checkpoint: {resume_path}")
+        else:
+            print("Không thấy checkpoint — train từ đầu.")
+    trainer.train(resume_from_checkpoint=resume_path)
 
     config.ADAPTER_DIR.mkdir(exist_ok=True)
     model.save_pretrained(config.ADAPTER_DIR)
