@@ -1,5 +1,6 @@
 import os
 import re
+import shutil
 import subprocess
 import sys
 from pathlib import Path
@@ -56,6 +57,7 @@ def _run(cmd, log=""):
 # ---------------- Train ----------------
 
 def train_ui(dataset, model, data_size):
+    _free_gpu()
     cmd = [sys.executable, str(SCRIPT / "train_qlora.py")]
     if dataset:
         cmd += ["--dataset", dataset]
@@ -71,6 +73,23 @@ def train_ui(dataset, model, data_size):
 # ---------------- OCR ----------------
 
 _OCR_CACHE = {}
+
+
+def _free_gpu():
+    """Nhả model OCR đang cache trước khi chạy tiến trình nặng (Train/Eval/Export).
+
+    UI và subprocess (train/eval/export) là 2 process riêng nhưng chung VRAM —
+    không nhả thì export/merge phải offload ra disk (chậm) hoặc OOM.
+    """
+    _OCR_CACHE.clear()
+    try:
+        import gc
+        import torch
+        gc.collect()
+        if torch.cuda.is_available():
+            torch.cuda.empty_cache()
+    except Exception:
+        pass
 
 
 def _get_ocr(config, adapter, model):
@@ -120,6 +139,7 @@ def ocr_file_ui(file_path, adapter, model):
 # ---------------- Eval ----------------
 
 def eval_ui(num_test, adapter, model):
+    _free_gpu()
     cmd = [sys.executable, str(SCRIPT / "eval_ocr.py"), "--num-test", str(int(num_test))]
     if adapter and adapter.strip():
         cmd += ["--adapter", adapter.strip()]
@@ -131,12 +151,71 @@ def eval_ui(num_test, adapter, model):
 # ---------------- Export ----------------
 
 def export_ui(adapter, model):
+    _free_gpu()
     cmd = [sys.executable, str(SCRIPT / "export_merged.py")]
     if adapter and adapter.strip():
         cmd += ["--adapter", adapter.strip()]
     if model and model.strip():
         cmd += ["--model", model.strip()]
     yield from _run(cmd)
+
+
+def _latest_gguf():
+    """File .gguf mới nhất (ưu tiên bản Q4_K_M), hoặc None nếu chưa có."""
+    files = sorted((PROJECT_ROOT / "models" / "gguf").glob("*.gguf"))
+    if not files:
+        return None
+    q4 = [f for f in files if "Q4_K_M" in f.name]
+    pick = q4[-1] if q4 else files[-1]
+    return str(pick)
+
+
+def export_gguf_ui(adapter, model):
+    """Full chain: merge adapter -> convert GGUF -> quantize. Chỉ Linux/Colab."""
+    if sys.platform == "win32":
+        yield ("Export GGUF cần Linux/Colab (build llama.cpp) — "
+               "không chạy trên Windows."), gr.DownloadButton(visible=False)
+        return
+    _free_gpu()
+    config = Configs()
+    adapter = (adapter or "").strip() or str(config.ADAPTER_DIR)
+    model = (model or "").strip() or config.MODEL_NAME
+    merge_dir = str(PROJECT_ROOT / "models" / f"{Path(adapter).name}-merged")
+    log = ""
+    cmd1 = [sys.executable, str(SCRIPT / "export_merged.py"),
+            "--adapter", adapter, "--model", model, "--output", merge_dir]
+    for chunk in _run(cmd1, "> " + " ".join(cmd1) + "\n"):
+        log = chunk
+        yield log, gr.DownloadButton(visible=False)
+    cmd2 = ["bash", str(SCRIPT / "export_gguf.sh"), merge_dir]
+    for chunk in _run(cmd2, log):
+        log = chunk
+        yield log, gr.DownloadButton(visible=False)
+    gguf = _latest_gguf()
+    if gguf:
+        yield (log + f"\n✅ GGUF: {gguf}",
+               gr.DownloadButton(value=gguf, visible=True,
+                                 label=f"⬇ Tải {Path(gguf).name}"))
+    else:
+        yield (log + "\n[WARN] Không thấy file .gguf — xem log convert.",
+               gr.DownloadButton(visible=False))
+
+
+def zip_adapter_ui(adapter):
+    """Nén thư mục adapter local thành .zip để tải về qua UI."""
+    config = Configs()
+    adapter = (adapter or "").strip() or str(config.ADAPTER_DIR)
+    src = Path(adapter)
+    if "/" in adapter and not src.exists():
+        return ("Adapter là repo Hub — không nén local được. "
+                "Tải trực tiếp từ trang Hub của repo."), gr.DownloadButton(visible=False)
+    if not src.exists():
+        return f"Không thấy thư mục adapter: {adapter}", gr.DownloadButton(visible=False)
+    zip_path = shutil.make_archive(str(PROJECT_ROOT / "models" / src.name),
+                                   "zip", root_dir=str(src.parent), base_dir=src.name)
+    return (f"✅ Đã nén: {zip_path}",
+            gr.DownloadButton(value=zip_path, visible=True,
+                              label=f"⬇ Tải {Path(zip_path).name}"))
 
 
 # ---------------- Settings (HF token) ----------------
@@ -264,6 +343,22 @@ def build_app():
             export_btn = gr.Button("📦 Export full model", variant="primary")
             export_log = gr.Textbox(label="Log", lines=20, max_lines=30, autoscroll=True, elem_classes=["log-scroll"])
             export_btn.click(export_ui, inputs=[export_adapter, export_model], outputs=export_log)
+
+            gguf_btn = gr.Button("📦 Export GGUF (merge + convert + quantize, chỉ Linux/Colab)",
+                                 variant="primary")
+            _gguf0 = _latest_gguf()
+            dl_gguf = gr.DownloadButton(
+                f"⬇ Tải {Path(_gguf0).name}" if _gguf0 else "⬇ Tải file GGUF",
+                value=_gguf0, visible=bool(_gguf0))
+            gguf_btn.click(export_gguf_ui, inputs=[export_adapter, export_model],
+                           outputs=[export_log, dl_gguf])
+
+            with gr.Row():
+                zip_btn = gr.Button("🗜 Nén adapter (.zip) để tải về")
+                zip_msg = gr.Markdown()
+            dl_adapter = gr.DownloadButton("⬇ Tải adapter (.zip)", visible=False)
+            zip_btn.click(zip_adapter_ui, inputs=[export_adapter],
+                          outputs=[zip_msg, dl_adapter])
 
         with gr.Tab("Settings"):
             tok_status = gr.Markdown(value=token_status())
