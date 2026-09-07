@@ -92,6 +92,13 @@ if [ -n "$DO_UI" ]; then
         echo "Dang cap nhat torchao - peft yeu cau >=0.16 de gan adapter..."
         uv pip install --python "$PYTHON" "torchao>=0.16" 2>/dev/null || echo "[WARN] Bo qua torchao."
     fi
+    # Cai them deps cho Fine-tune trong UI (Colab da co san torch CUDA):
+    # Neu khong co bitsandbytes/peft/transformers -> train_qlora.py fallback full-precision
+    # -> OOM tren GPU 14.56 GB. Can 4-bit QLoRA moi chay vua.
+    if ! "$PYTHON" -c "import bitsandbytes, peft, transformers" 2>/dev/null; then
+        echo "Dang cai bitsandbytes + transformers + peft (cho Fine-tune trong UI)..."
+        uv pip install --python "$PYTHON" bitsandbytes "transformers>=4.51" "peft>=0.14" 2>/dev/null || echo "[WARN] Bo qua cai dat Fine-tune deps."
+    fi
     "$PYTHON" scripts/ui.py
     exit 0
 fi
