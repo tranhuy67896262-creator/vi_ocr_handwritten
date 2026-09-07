@@ -3,7 +3,8 @@ python-dotenv>=1.0
 pillow>=10.0
 tqdm>=4.66
 jiwer>=3.0
-pymupdf>=1.24  # OCR file PDF nhiều trang trong UI (pip thuần, không cần system lib)
+pymupdf>=1.24  # render trang PDF scan nhiều trang (pip thuần, không cần system lib)
+python-docx>=1.1  # trich anh nhung tu file Word .docx de OCR
 
 # Deep learning (KHÔNG liệt kê torch/torchvision ở đây: PyPI mặc định là bản CPU.
 # Các script run_train.* tự cài bản CUDA: pip install torch torchvision --index-url https://download.pytorch.org/whl/cu128)

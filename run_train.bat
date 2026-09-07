@@ -92,7 +92,7 @@ if defined DO_UI (
     echo Opening UI Gradio - light mode, chua tai torch/data...
     "%PY%" -c "import gradio, dotenv" >nul 2>&1
     if errorlevel 1 (
-        uv pip install --python "%PY%" gradio python-dotenv
+        uv pip install --python "%PY%" gradio python-dotenv pymupdf python-docx
         if errorlevel 1 exit /b 1
     )
     "%PY%" scripts\ui.py

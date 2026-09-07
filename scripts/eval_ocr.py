@@ -39,8 +39,16 @@ def main():
 
     if args.image:
         try:
-            img = Image.open(args.image).convert("RGB")
-            print(predict_image(config, model, processor, img))
+            suf = args.image.lower()
+            if suf.endswith(".pdf"):
+                from src.infer.predict import ocr_pdf
+                print(ocr_pdf(config, model, processor, args.image))
+            elif suf.endswith(".docx"):
+                from src.infer.predict import ocr_docx
+                print(ocr_docx(config, model, processor, args.image))
+            else:
+                img = Image.open(args.image).convert("RGB")
+                print(predict_image(config, model, processor, img))
         except Exception as exc:
             log_and_exit(exc, stage="OCR", extra_hint=f"Kiểm tra đường dẫn ảnh: {args.image}")
         return

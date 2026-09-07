@@ -69,6 +69,28 @@ def ocr_ui(image, adapter):
     return predict_image(config, model, processor, image)
 
 
+def ocr_file_ui(file_path, adapter):
+    """OCR file nhiều trang: PDF scan / Word (.docx) / ảnh lẻ."""
+    if not file_path:
+        return "Chưa có file. Hãy upload PDF, Word (.docx) hoặc ảnh."
+    config = Configs()
+    adapter = (adapter or "").strip() or str(config.ADAPTER_DIR)
+    model, processor = _get_ocr(config, adapter)
+    try:
+        suf = Path(file_path).suffix.lower()
+        if suf == ".pdf":
+            from src.infer.predict import ocr_pdf
+            return ocr_pdf(config, model, processor, file_path)
+        if suf == ".docx":
+            from src.infer.predict import ocr_docx
+            return ocr_docx(config, model, processor, file_path)
+        from PIL import Image as _PIL
+        from src.infer.predict import predict_image
+        return predict_image(config, model, processor, _PIL.open(file_path).convert("RGB"))
+    except ImportError as exc:
+        return str(exc)
+
+
 # ---------------- Eval ----------------
 
 def eval_ui(num_test, adapter):
@@ -161,6 +183,16 @@ def build_app():
             ocr_btn = gr.Button("🔍 OCR", variant="primary")
             ocr_out = gr.Textbox(label="Kết quả")
             ocr_btn.click(ocr_ui, inputs=[image, adapter_in], outputs=ocr_out)
+
+            gr.Markdown("### 📄 OCR file nhiều trang (PDF scan / Word .docx / ảnh)")
+            pdf_in = gr.File(
+                label="File PDF, Word (.docx) hoặc ảnh",
+                file_types=[".pdf", ".docx", ".png", ".jpg", ".jpeg", ".tif", ".tiff", ".bmp", ".webp"],
+            )
+            pdf_btn = gr.Button("🔍 OCR file", variant="primary")
+            pdf_out = gr.Textbox(label="Kết quả (gộp theo trang/ảnh)", lines=20, max_lines=30,
+                                 autoscroll=True, elem_classes=["log-scroll"])
+            pdf_btn.click(ocr_file_ui, inputs=[pdf_in, adapter_in], outputs=pdf_out)
 
         with gr.Tab("Eval CER/WER"):
             gr.Markdown(

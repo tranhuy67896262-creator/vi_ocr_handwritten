@@ -92,6 +92,7 @@ class Configs:
 
     # Inference
     MAX_NEW_TOKENS = 256
+    PDF_DPI = 200  # DPI render trang PDF scan (khớp file scan thực tế ~200dpi)
     ATTN_IMPLEMENTATION = "sdpa"  # Windows dùng "sdpa"; Linux có thể "flash_attention_2"
 
     def __init__(self):

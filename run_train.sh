@@ -84,7 +84,7 @@ if [ -n "$DO_UI" ]; then
     echo "===== Mo UI Gradio (che do nhe: chua tai torch/data) ====="
     if ! "$PYTHON" -c "import gradio, dotenv" 2>/dev/null; then
         echo "Dang cai gradio (toi thieu cho UI)..."
-        uv pip install --python "$PYTHON" gradio python-dotenv
+        uv pip install --python "$PYTHON" gradio python-dotenv pymupdf python-docx
     fi
     "$PYTHON" scripts/ui.py
     exit 0
