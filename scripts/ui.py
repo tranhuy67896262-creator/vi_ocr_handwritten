@@ -188,10 +188,14 @@ def _merge_is_fresh(merge_dir, adapter):
 
 def export_gguf_ui(adapter, model):
     """Nút Download .gguf: bỏ qua merge nếu thư mục merged còn mới,
-    rồi convert + quantize. Chỉ Linux/Colab."""
+    rồi convert + quantize. Chỉ Linux/Colab.
+
+    YIELD tuple 3 phần tử (log, download, status) — Gradio bắt lỗi nếu lệch.
+    """
+    _hidden = gr.DownloadButton(visible=False)
     if sys.platform == "win32":
-        yield ("Export GGUF cần Linux/Colab (build llama.cpp) — "
-               "không chạy trên Windows."), gr.DownloadButton(visible=False)
+        yield (("Export GGUF cần Linux/Colab (build llama.cpp) — "
+                "không chạy trên Windows."), _hidden, "")
         return
     _free_gpu()
     config = Configs()
@@ -201,25 +205,28 @@ def export_gguf_ui(adapter, model):
     log = ""
     if _merge_is_fresh(merge_dir, adapter):
         log = f"Dùng merged có sẵn (mới hơn adapter): {merge_dir}\n"
-        yield log, gr.DownloadButton(visible=False)
+        yield log, _hidden, "⏳ Đang convert GGUF (xem Log)..."
     else:
         cmd1 = [sys.executable, str(SCRIPT / "export_merged.py"),
                 "--adapter", adapter, "--model", model, "--output", merge_dir]
         for chunk in _run(cmd1, "> " + " ".join(cmd1) + "\n"):
             log = chunk
-            yield log, gr.DownloadButton(visible=False)
+            yield log, _hidden, "⏳ Đang merge adapter (vài phút)..."
     cmd2 = ["bash", str(SCRIPT / "export_gguf.sh"), merge_dir]
     for chunk in _run(cmd2, log):
         log = chunk
-        yield log, gr.DownloadButton(visible=False)
+        yield (log, _hidden,
+               "⏳ Đang build/convert GGUF — lần đầu lâu (10–20 phút). "
+               "Xong sẽ hiện nút tải file bên dưới.")
     gguf = _latest_gguf()
     if gguf:
         yield (log + f"\n✅ GGUF: {gguf}",
                gr.DownloadButton(value=gguf, visible=True,
-                                 label=f"⬇ Tải {Path(gguf).name}"))
+                                 label=f"⬇ Tải {Path(gguf).name}"),
+               "✅ Xong — bấm nút tải file bên dưới.")
     else:
         yield (log + "\n[WARN] Không thấy file .gguf — xem log convert.",
-               gr.DownloadButton(visible=False))
+               _hidden, "⚠️ Thất bại — xem Log.")
 
 
 # ---------------- Settings (HF token) ----------------
@@ -349,12 +356,13 @@ def build_app():
             export_btn.click(export_ui, inputs=[export_adapter, export_model], outputs=export_log)
 
             gguf_btn = gr.Button("⬇ Download file .gguf", variant="primary")
+            gguf_status = gr.Markdown()
             _gguf0 = _latest_gguf()
             dl_gguf = gr.DownloadButton(
                 f"⬇ Tải {Path(_gguf0).name}" if _gguf0 else "⬇ Tải file GGUF",
                 value=_gguf0, visible=bool(_gguf0))
             gguf_btn.click(export_gguf_ui, inputs=[export_adapter, export_model],
-                           outputs=[export_log, dl_gguf])
+                           outputs=[export_log, dl_gguf, gguf_status])
 
         with gr.Tab("Settings"):
             tok_status = gr.Markdown(value=token_status())
