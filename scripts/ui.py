@@ -142,12 +142,12 @@ def build_app():
     with gr.Blocks(title="Vi-OCR-Handwritten UI") as demo:
         gr.Markdown(
             "# 🚀 Vi-OCR-Handwritten — QLoRA fine-tune Qwen2.5-VL\n"
-            "Train / OCR / Eval / Export. Log hiển thị realtime.\n"
+            "Fine-tune / OCR / Eval / Export. Log hiển thị realtime.\n"
             "☁️ Dùng ké GPU Colab: "
             "[mở notebook Colab](https://colab.research.google.com/notebook#fileId=https%3A//huggingface.co/Qwen/Qwen2.5-VL-7B-Instruct.ipynb)"
         )
 
-        with gr.Tab("Train"):
+        with gr.Tab("Fine-tune"):
             gr.Markdown(
                 "Dataset nguồn có **50k+ ảnh**. Chọn **Full** để train toàn bộ (lâu nhất), "
                 "**35k / 10k** để train nhanh hơn."
@@ -174,7 +174,7 @@ def build_app():
                 "Models: [Qwen2.5-VL-7B-Instruct](https://huggingface.co/Qwen/Qwen2.5-VL-7B-Instruct) · "
                 "[Qwen2.5-VL-3B-Instruct](https://huggingface.co/Qwen/Qwen2.5-VL-3B-Instruct)"
             )
-            train_btn = gr.Button("▶ Train", variant="primary")
+            train_btn = gr.Button("▶ Fine-tune", variant="primary")
             train_log = gr.Textbox(label="Log", lines=20, max_lines=30, autoscroll=True, elem_classes=["log-scroll"])
             train_btn.click(
                 train_ui,
@@ -236,7 +236,7 @@ def build_app():
             save_btn.click(save_token, inputs=[token_in], outputs=[tok_msg, tok_status])
             gr.Markdown(
                 "Ghi chú: token được lưu vào `.env.dev` (git-ignored). "
-                "Mọi nút Train/OCR/Eval/Export đều đọc token này khi chạy."
+                "Mọi nút Fine-tune/OCR/Eval/Export đều đọc token này khi chạy."
             )
 
     return demo
