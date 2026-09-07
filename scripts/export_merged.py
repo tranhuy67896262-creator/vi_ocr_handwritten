@@ -10,7 +10,7 @@ from peft import PeftModel
 from transformers import Qwen2_5_VLForConditionalGeneration
 
 from configs.configs import Configs, _adapter_tag
-from src.modeling.load import load_processor
+from src.modeling.load import load_processor, resolve_attn_implementation
 from src.utils.logging import log_and_exit, setup_file_logging
 
 
@@ -44,7 +44,7 @@ def main():
             config.MODEL_NAME,
             torch_dtype=torch.bfloat16 if torch.cuda.is_bf16_supported() else torch.float16,
             device_map="auto",
-            attn_implementation=config.ATTN_IMPLEMENTATION,
+            attn_implementation=resolve_attn_implementation(config),
             token=config.HF_TOKEN or None,
         )
         model = PeftModel.from_pretrained(model, adapter, token=config.HF_TOKEN or None)

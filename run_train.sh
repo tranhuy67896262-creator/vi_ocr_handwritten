@@ -107,6 +107,13 @@ if ! "$PYTHON" -c "import torch, torchvision; assert torch.cuda.is_available()" 
     uv pip install --python "$PYTHON" torch torchvision --index-url https://download.pytorch.org/whl/cu128
 fi
 
+# flash-attn: tăng tốc attention trên GPU lớn (A100/H100). Chỉ có wheel Linux
+# nên cài ở đây (sau torch); thiếu thì code tự fallback sdpa nên cài best-effort.
+if ! "$PYTHON" -c "import flash_attn" 2>/dev/null; then
+    echo "Dang cai flash-attn (tang toc A100/H100, bo qua neu loi)..."
+    uv pip install --python "$PYTHON" flash-attn 2>/dev/null || echo "[WARN] Bo qua flash-attn."
+fi
+
 # Cài dependencies còn thiếu (Colab đã có sẵn torch CUDA + torchvision)
 if ! "$PYTHON" -c "import transformers, peft, bitsandbytes, torchvision" 2>/dev/null; then
     echo "Dang cai requirements..."

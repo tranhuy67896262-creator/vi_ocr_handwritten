@@ -11,6 +11,18 @@ def load_processor(config, model_name=None):
     return processor
 
 
+def resolve_attn_implementation(config):
+    """Chọn attention: 'auto' -> flash_attention_2 nếu có (Linux/GPU lớn),
+    ngược lại sdpa (Windows hoặc thiếu flash_attn)."""
+    if config.ATTN_IMPLEMENTATION != "auto":
+        return config.ATTN_IMPLEMENTATION
+    try:
+        import flash_attn  # noqa: F401
+        return "flash_attention_2"
+    except ImportError:
+        return "sdpa"
+
+
 def _get_quant_config(config, compute_dtype):
     return BitsAndBytesConfig(
         load_in_4bit=config.USE_4BIT,
@@ -39,7 +51,7 @@ def load_model_and_processor(config):
         quantization_config=quantization_config,
         torch_dtype=compute_dtype,
         device_map="auto",
-        attn_implementation=config.ATTN_IMPLEMENTATION,
+        attn_implementation=resolve_attn_implementation(config),
         token=config.HF_TOKEN or None,
     )
     processor = load_processor(config)

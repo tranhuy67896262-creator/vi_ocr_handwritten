@@ -23,6 +23,6 @@ Fine-tune **Qwen2.5-VL-3B-Instruct** bằng **QLoRA** cho chữ viết tay tiế
 
 ## Quirk môi trường
 
-- Python 3.13 / Windows. `bitsandbytes`+CUDA và `flash_attn` hỏng trên Windows → `ATTN_IMPLEMENTATION="sdpa"`. Train thật chạy **WSL2/GPU cloud** (7B cần ~16 GB+; export merged cần gấp ~2x).
-- `HF_TOKEN` đọc từ `.env.dev` qua `python-dotenv` trong `configs.py`. Dataset gốc gated — phải accept điều khoản trên HF.
+- Python 3.13 / Windows. `bitsandbytes`+CUDA và `flash_attn` hỏng trên Windows → `ATTN_IMPLEMENTATION="auto"` (`resolve_attn_implementation` trong `src/modeling/load.py`: có `flash_attn` thì `flash_attention_2`, không thì `sdpa`; train/infer/export đều đi qua hàm này — đừng đọc config trực tiếp). Train thật chạy **WSL2/GPU cloud** (7B cần ~16 GB+; export merged cần gấp ~2x). A100/H100: `.sh` tự cài `flash-attn` ở đường train (best-effort, chỉ Linux) rồi tăng `--batch-size` dần.
+- `HF_TOKEN` đọc env trước, fallback `.env.dev` **mỗi lần khởi tạo `Configs()`** (parse file trực tiếp — class attribute chỉ tính 1 lần lúc import nên token lưu giữa session sẽ stale nếu không vậy). Dataset gốc gated — phải accept điều khoản trên HF.
 - Comment/docstring bằng tiếng Việt.

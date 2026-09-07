@@ -5,7 +5,7 @@ from peft import PeftModel
 from PIL import Image
 from transformers import Qwen2_5_VLForConditionalGeneration
 
-from src.modeling.load import load_processor
+from src.modeling.load import load_processor, resolve_attn_implementation
 from src.utils.image import standardize_a4
 
 
@@ -22,7 +22,7 @@ def load_ocr_model(config, adapter_dir=None, model_name=None):
         base,
         torch_dtype=torch.bfloat16 if torch.cuda.is_bf16_supported() else torch.float16,
         device_map="auto",
-        attn_implementation=config.ATTN_IMPLEMENTATION,
+        attn_implementation=resolve_attn_implementation(config),
         token=config.HF_TOKEN or None,
     )
     if adapter_dir:

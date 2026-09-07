@@ -117,6 +117,22 @@ python scripts/train_qlora.py --push --hub-repo <owner>/qwen25vl-3b-vi-hwr-lora
 ```
 > Dataset mặc định: source gốc gated `5CD-AI/Viet-Handwriting-OCR-v2` (phải accept điều khoản trên HF). Đổi bằng `--dataset <owner>/<repo>`.
 
+## Chạy trên A100 / H100 (Colab Pro)
+
+```bash
+!pip install -q flash-attn   # 1 lần mỗi runtime — code tự dùng khi có, fallback sdpa khi không
+```
+
+```bash
+# A100 40GB: batch lớn hơn + model 7B
+./run_train.sh --train --model Qwen/Qwen2.5-VL-7B-Instruct --batch-size 4 --max-samples 100
+
+# H100: tương tự, có thể thử --batch-size 8
+./run_train.sh --train --model Qwen/Qwen2.5-VL-7B-Instruct --batch-size 8 --max-samples 100
+```
+
+`ATTN_IMPLEMENTATION="auto"` trong config (flash_attention_2 nếu import được, sdpa nếu không) nên không cần sửa code. Batch size cứ tăng dần tới khi gần đầy VRAM rồi lùi 1 nấc.
+
 ## Ghi chú quan trọng
 
 - Ảnh train/inference tự chuẩn hóa khổ A4 (pad trắng) và giới hạn pixel để vừa context 1024 token (`A4_STANDARDIZE`, `MAX_PIXELS` trong `configs/configs.py`).

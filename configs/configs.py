@@ -93,7 +93,7 @@ class Configs:
     # Inference
     MAX_NEW_TOKENS = 256
     PDF_DPI = 200  # DPI render trang PDF scan (khớp file scan thực tế ~200dpi)
-    ATTN_IMPLEMENTATION = "sdpa"  # Windows dùng "sdpa"; Linux có thể "flash_attention_2"
+    ATTN_IMPLEMENTATION = "auto"  # auto: flash_attention_2 nếu có (Linux/GPU lớn), nếu không sdpa
 
     def __init__(self):
         """Tạo thư mục nếu chưa tồn tại"""
@@ -101,3 +101,18 @@ class Configs:
         self.MODELS_DIR.mkdir(exist_ok=True)
         self.NOTEBOOKS_DIR.mkdir(exist_ok=True)
         self.ADAPTER_DIR.mkdir(exist_ok=True)
+        # Đọc token fresh mỗi lần khởi tạo (ưu tiên env, fallback .env.dev):
+        # class attribute HF_TOKEN chỉ tính 1 lần lúc import — token lưu giữa
+        # session qua tab Settings sẽ không thấy nếu không làm bước này.
+        self.HF_TOKEN = os.getenv("HF_TOKEN", "") or self._read_dotenv_token()
+
+    @staticmethod
+    def _read_dotenv_token():
+        try:
+            for line in (Configs.PROJECT_ROOT / ".env.dev").read_text(encoding="utf-8").splitlines():
+                if line.strip().startswith("HF_TOKEN"):
+                    _, _, v = line.partition("=")
+                    return v.strip()
+        except OSError:
+            pass
+        return ""
