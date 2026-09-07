@@ -9,14 +9,17 @@ from src.modeling.load import load_processor
 from src.utils.image import standardize_a4
 
 
-def load_ocr_model(config, adapter_dir=None):
+def load_ocr_model(config, adapter_dir=None, model_name=None):
     """Load model gốc + LoRA adapter để OCR.
 
     adapter_dir có thể là đường dẫn local hoặc repo id trên HF Hub (vd 'owner/repo').
+    model_name là base model (mặc định config.MODEL_NAME) — PHẢI cùng họ với adapter
+    (adapter 3B + base 7B sẽ lỗi shape).
     """
-    processor = load_processor(config)
+    base = model_name or config.MODEL_NAME
+    processor = load_processor(config, base)
     model = Qwen2_5_VLForConditionalGeneration.from_pretrained(
-        config.MODEL_NAME,
+        base,
         torch_dtype=torch.bfloat16 if torch.cuda.is_bf16_supported() else torch.float16,
         device_map="auto",
         attn_implementation=config.ATTN_IMPLEMENTATION,

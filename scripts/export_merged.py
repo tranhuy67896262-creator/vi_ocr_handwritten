@@ -9,7 +9,7 @@ import torch
 from peft import PeftModel
 from transformers import Qwen2_5_VLForConditionalGeneration
 
-from configs.configs import Configs
+from configs.configs import Configs, _adapter_tag
 from src.modeling.load import load_processor
 from src.utils.logging import log_and_exit, setup_file_logging
 
@@ -20,12 +20,17 @@ def main():
     )
     parser.add_argument("--adapter", type=str, default=None,
                         help="Thư mục adapter hoặc repo id (mặc định: từ config)")
+    parser.add_argument("--model", type=str, default=None,
+                        help="Base model (mặc định: từ config) — phải cùng họ với adapter")
     parser.add_argument("--output", type=str, default=None,
                         help="Thư mục xuất full model (mặc định: models/<adapter>-merged)")
     args = parser.parse_args()
 
     config = Configs()
     setup_file_logging(config.MODELS_DIR / "export.log")
+    if args.model:
+        config.MODEL_NAME = args.model
+        config.ADAPTER_DIR = config.MODELS_DIR / f"qwen25vl-{_adapter_tag(args.model)}-vi-hwr-lora"
     adapter = args.adapter or str(config.ADAPTER_DIR)
     out = Path(args.output) if args.output else config.MODELS_DIR / f"{config.ADAPTER_DIR.name}-merged"
 

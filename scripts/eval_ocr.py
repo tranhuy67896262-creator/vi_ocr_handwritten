@@ -9,7 +9,7 @@ from datasets import load_dataset
 from jiwer import cer, wer
 from PIL import Image
 
-from configs.configs import Configs
+from configs.configs import Configs, _adapter_tag
 from src.datasets.dataset import detect_columns
 from src.infer.predict import load_ocr_model, predict_image
 from src.utils.logging import log_and_exit, setup_file_logging
@@ -20,6 +20,8 @@ def main():
         description="OCR 1 ảnh hoặc đánh giá CER/WER trên test split"
     )
     parser.add_argument("--image", type=str, default=None, help="Đường dẫn ảnh cần OCR")
+    parser.add_argument("--model", type=str, default=None,
+                        help="Base model (mặc định: từ config) — phải cùng họ với adapter")
     parser.add_argument("--adapter", type=str, default=None,
                         help="Thư mục LoRA adapter hoặc repo id trên Hub (vd owner/repo); mặc định: từ config")
     parser.add_argument("--num-test", type=int, default=100, help="Số mẫu đánh giá trên test split")
@@ -27,10 +29,13 @@ def main():
 
     config = Configs()
     setup_file_logging(config.MODELS_DIR / "eval.log")
+    if args.model:
+        config.MODEL_NAME = args.model
+        config.ADAPTER_DIR = config.MODELS_DIR / f"qwen25vl-{_adapter_tag(args.model)}-vi-hwr-lora"
     adapter_dir = args.adapter or str(config.ADAPTER_DIR)
 
     try:
-        model, processor = load_ocr_model(config, adapter_dir)
+        model, processor = load_ocr_model(config, adapter_dir, args.model)
     except Exception as exc:
         log_and_exit(
             exc, stage="MODEL",

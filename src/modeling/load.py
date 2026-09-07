@@ -3,8 +3,10 @@ from peft import LoraConfig, get_peft_model, prepare_model_for_kbit_training
 from transformers import BitsAndBytesConfig, Qwen2_5_VLForConditionalGeneration, Qwen2_5_VLProcessor
 
 
-def load_processor(config):
-    processor = Qwen2_5_VLProcessor.from_pretrained(config.MODEL_NAME, token=config.HF_TOKEN or None)
+def load_processor(config, model_name=None):
+    processor = Qwen2_5_VLProcessor.from_pretrained(
+        model_name or config.MODEL_NAME, token=config.HF_TOKEN or None
+    )
     processor.tokenizer.padding_side = "right"
     return processor
 
