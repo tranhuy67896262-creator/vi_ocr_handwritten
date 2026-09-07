@@ -22,6 +22,18 @@ if defined A1 if not "%A1:~0,2%"=="--" (
     shift
 )
 
+REM Canh bao neu chua co token - giong run_train.sh
+set "HAS_TOKEN="
+if defined HF_TOKEN set "HAS_TOKEN=1"
+if not exist .env.dev goto :tokenwarn
+findstr /R /C:"^HF_TOKEN" .env.dev >nul 2>&1
+if not errorlevel 1 set "HAS_TOKEN=1"
+:tokenwarn
+if defined HAS_TOKEN goto :hastoken
+echo [WARN] Chua co HF_TOKEN. Truyen token lam doi so dau:
+echo   %~nx0 hf_xxxxxxxx --max-samples 100
+:hastoken
+
 REM Che do UI: --ui = chi cai moi truong + mo UI Gradio (khong train)
 set "DO_UI="
 echo %* | findstr /C:"--ui" >nul 2>&1 && set "DO_UI=1"
@@ -114,6 +126,14 @@ echo(
 "%PY%" scripts\train_qlora.py %REST%
 set EXIT_CODE=%ERRORLEVEL%
 if not "%EXIT_CODE%"=="0" exit /b %EXIT_CODE%
+
+REM Sao luu adapter + log - tuy chon, giong run_train.sh
+REM vd: set BACKUP_DIR=D:\backup\vi_ocr_models
+if defined BACKUP_DIR if exist models (
+    if not exist "%BACKUP_DIR%" mkdir "%BACKUP_DIR%"
+    xcopy models "%BACKUP_DIR%\" /E /I /Y >nul
+    echo Da sao luu ket qua vao: %BACKUP_DIR%
+)
 
 REM --eval[=N]: chay eval CER/WER sau train (giong run_train.sh)
 if defined DO_EVAL (

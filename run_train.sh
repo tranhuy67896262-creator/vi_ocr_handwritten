@@ -34,14 +34,19 @@ DO_UI=""
 DO_EVAL=""
 EVAL_NUM="100"
 NEW_ARGS=()
+HAS_ARGS=""
 for arg in "$@"; do
     case "$arg" in
         --ui)     DO_UI=1 ;;
         --eval)   DO_EVAL=1 ;;
         --eval=*) DO_EVAL=1; EVAL_NUM="${arg#--eval=}" ;;
-        *)        NEW_ARGS+=("$arg") ;;
+        *)        NEW_ARGS+=("$arg"); HAS_ARGS=1 ;;
     esac
 done
+# Chi nhan so cho --eval (train_qlora.py khong co flag --eval* nao khac)
+case "$EVAL_NUM" in
+    ''|*[!0-9]*) EVAL_NUM="100" ;;
+esac
 
 # Cache model/dataset vào thư mục relative của project (vd .hf_cache) — dễ mang theo.
 # Muốn cache chỗ khác/Drive: export HF_HOME=<path> trước khi chạy.
@@ -66,11 +71,6 @@ fi
 unset VIRTUAL_ENV
 echo "Python: $("$PYTHON" --version 2>/dev/null || echo "khong xac dinh")"
 
-# Kiểm tra GPU
-if ! "$PYTHON" -c "import torch; assert torch.cuda.is_available()" 2>/dev/null; then
-    echo "[WARN] Khong thay GPU. Tren Colab: Runtime > Change runtime type > GPU (T4/A100/H100)."
-fi
-
 # Chế độ --ui: lên UI ngay, KHÔNG cài torch-CUDA / requirements / data.
 # Chỉ cần gradio + dotenv để UI mở nhanh. Nút Train/OCR trong UI sẽ báo lỗi
 # nếu thiếu deps — khi đó chạy lại script không --ui để cài full.
@@ -82,6 +82,11 @@ if [ -n "$DO_UI" ]; then
     fi
     "$PYTHON" scripts/ui.py
     exit 0
+fi
+
+# Kiểm tra GPU (chỉ ở chế độ train — giong run_train.bat)
+if ! "$PYTHON" -c "import torch; assert torch.cuda.is_available()" 2>/dev/null; then
+    echo "[WARN] Khong thay GPU. Tren Colab: Runtime > Change runtime type > GPU (T4/A100/H100)."
 fi
 
 # Cài torch/torchvision bản CUDA nếu chưa có (PyPI mặc định là bản CPU)
@@ -104,7 +109,9 @@ echo "  Train full: $0"
 echo "  Push Hub  : $0 --push --hub-repo <owner>/qwen25vl-7b-vi-hwr-lora"
 echo
 
-if [ ${#NEW_ARGS[@]} -gt 0 ]; then
+# HAS_ARGS thay cho [ ${#NEW_ARGS[@]} -gt 0 ]: mảng rỗng + set -u crash
+# trên bash cũ (< 4.4, vd macOS) với lỗi "unbound variable".
+if [ -n "$HAS_ARGS" ]; then
     "$PYTHON" scripts/train_qlora.py "${NEW_ARGS[@]}"
 else
     "$PYTHON" scripts/train_qlora.py
