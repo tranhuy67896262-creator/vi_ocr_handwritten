@@ -513,6 +513,15 @@ def build_app():
                 "Mọi nút Fine-tune/OCR/Eval/Export đều đọc token này khi chạy."
             )
 
+            gr.Markdown("### 💾 Kiểm tra model/adapter đã tải về máy chưa (không tải thêm)")
+            check_model = gr.Dropdown(choices=MODEL_CHOICES, value=cfg.MODEL_NAME,
+                                      label="Base model", allow_custom_value=True)
+            check_adapter = gr.Textbox(value=str(cfg.ADAPTER_DIR), label="Adapter")
+            check_btn = gr.Button("🔍 Kiểm tra", variant="secondary")
+            check_msg = gr.Markdown()
+            check_btn.click(check_model_ui, inputs=[check_model, check_adapter],
+                            outputs=check_msg)
+
     return demo
 
 
