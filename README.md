@@ -25,19 +25,25 @@
 
 # Pipeline Fine-tune Qwen2.5-VL-3B (chữ viết tay Việt)
 
-Cách **thêm kiến thức mới mà không làm mất kiến thức gốc**: base model đóng băng hoàn toàn, chỉ train LoRA adapter rank thấp với lr nhỏ (`1e-5 → 2e-5`), 1-2 epoch, cosine schedule. Kết quả là một adapter nhỏ (~vài trăm MB) lưu trong `models/qwen25vl-3b-vi-hwr-lora/`, không đụng tới weight gốc.
+Cách **thêm kiến thức mới mà không làm mất kiến thức gốc**: base model đóng băng hoàn toàn, chỉ train LoRA adapter rank thấp với lr nhỏ (`1e-5 → 2e-5`), 1-2 epoch, cosine schedule + KL-regularization. Kết quả là một adapter nhỏ (~vài trăm MB) lưu trong `models/qwen25vl-3b-vi-hwr-lora/`, không đụng tới weight gốc. Mặc định train **3B** (vừa T4 Colab); đổi sang 7B bằng `--model` hoặc dropdown trên UI.
 
 ## Cấu trúc
 
 ```
-configs/configs.py        # toàn bộ config (dataset, LoRA, training)
-src/datasets/dataset.py    # load + format dataset thành chat template Qwen
+configs/configs.py        # toàn bộ config (dataset, LoRA, training) — nguồn sự thật duy nhất
+src/datasets/dataset.py    # load + tự dò cột + format chat template Qwen (chuẩn hóa ảnh A4)
 src/datasets/collator.py   # chỉ tính loss trên phần assistant
 src/modeling/load.py       # load 4-bit + gắn LoRA
-src/train/trainer.py      # Trainer + lưu adapter
-src/infer/predict.py      # inference OCR
+src/train/trainer.py      # Trainer + lưu adapter (+ training_metadata.json)
+src/train/kl_trainer.py   # KL-regularization chống quên kiến thức gốc
+src/infer/predict.py      # inference OCR: ảnh lẻ / PDF nhiều trang / Word .docx
+src/utils/image.py        # chuẩn hóa ảnh khổ A4
 scripts/train_qlora.py    # entry point train
-scripts/eval_ocr.py       # OCR 1 ảnh / đánh giá CER-WER
+scripts/eval_ocr.py       # OCR file + đánh giá CER/WER
+scripts/export_merged.py  # merge LoRA vào base
+scripts/export_gguf.sh    # convert GGUF (Linux/Colab)
+scripts/ui.py             # UI Gradio 5 tab (Fine-tune/OCR/Eval/Export/Settings)
+run_train.sh / run_train.bat  # wrapper setup + chạy (Linux / Windows)
 ```
 
 ## Cài đặt
@@ -46,69 +52,74 @@ scripts/eval_ocr.py       # OCR 1 ảnh / đánh giá CER-WER
 pip install -r requirements.txt
 ```
 
-> **Windows:** nên chạy trong **WSL2** (hoặc GPU cloud như AutoDL/Colab Pro) vì `bitsandbytes` + CUDA trên Windows hay lỗi vặt, `flash_attn` không cài được. Nhớ set `HF_TOKEN` trong `.env.dev`. VRAM cần ~16 GB (RTX 4090 24GB là ổn).
+> **Windows:** train thật nên chạy trong **WSL2** (hoặc GPU cloud như Colab) vì `bitsandbytes` + CUDA trên Windows hay lỗi vặt. Nhớ set `HF_TOKEN` trong `.env.dev`. VRAM: 3B khoảng ~8GB+ (T4 15GB ổn); 7B cần 16GB+.
 
-## Chạy 1 lệnh
+## Chạy nhanh nhất: UI Gradio (mặc định)
+
+```bash
+run_train.bat   # Windows — mở UI ngay
+./run_train.sh  # Linux / WSL2 / Colab — mở UI ngay
+```
+
+Mặc định wrapper chỉ cài tối thiểu (`gradio`, `python-dotenv`, `pymupdf`, `python-docx`) rồi mở UI — chưa tải torch/data. 5 tab: **Fine-tune** (dataset, model 3B/7B, cỡ data) | **OCR** (ảnh lẻ + PDF scan + Word .docx) | **Eval CER/WER** | **Export** (merge, GGUF, push Hub) | **Settings** (lưu HF_TOKEN, kiểm tra model đã tải chưa). Nút Fine-tune trong UI cần đủ deps — chạy wrapper với `--train` 1 lần để cài full.
+
+Muốn train ngay từ lệnh (không qua UI): thêm cờ `--train`:
+
+```bash
+./run_train.sh --train --max-samples 100   # smoke test 100 ảnh
+./run_train.sh --train                     # train đầy đủ
+./run_train.sh --train --eval              # train xong eval 100 mẫu
+```
 
 **Trên Colab (khuyến nghị cho 3B):**
 1. Upload toàn bộ project vào Colab (kéo-thả vào `/content/`).
 2. Mở terminal (hoặc 1 cell) — truyền token luôn, script tự tạo `.env.dev`:
 ```bash
-!chmod +x run_train.sh && ./run_train.sh hf_xxxxx --max-samples 100   # smoke test
-!./run_train.sh hf_xxxxx                                               # train đầy đủ
+!chmod +x run_train.sh && ./run_train.sh hf_xxxxx --train --max-samples 100
 ```
-Hoặc bỏ qua token nếu đã upload sẵn `.env.dev`. Lấy token tại https://huggingface.co/settings/tokens.
+Hoặc bỏ qua token nếu đã upload sẵn `.env.dev` / dán token ở tab Settings. Lấy token tại https://huggingface.co/settings/tokens.
 
-**Trên Windows / Linux local:**
-```bash
-run_train.bat   # Windows (3B cần GPU ~8GB+; 7B thì cần 16GB+)
-./run_train.sh  # Linux / WSL2
-```
+Script tự cài dependencies + kiểm tra GPU + đọc `HF_TOKEN` từ `.env.dev`. Mọi flag train truyền thẳng qua được: `./run_train.sh --train --epochs 2 --lr 1e-5`.
 
-Script tự cài dependencies + kiểm tra GPU + đọc `HF_TOKEN` từ `.env.dev`, rồi gọi `train_qlora.py`. Mọi flag truyền thẳng qua được: `./run_train.sh --epochs 2 --lr 1e-5`.
-
-## Chạy chi tiết
+## Chạy chi tiết (terminal)
 
 ```bash
 # Train (thử nhanh với --max-samples trước khi train đủ)
 python scripts/train_qlora.py --max-samples 100
 
-# Train đầy đủ trên dataset
+# Train đầy đủ / đổi model
 python scripts/train_qlora.py
+python scripts/train_qlora.py --model Qwen/Qwen2.5-VL-7B-Instruct
 
 # Ghi đè config nhanh từ CLI
 python scripts/train_qlora.py --epochs 2 --lr 1e-5 --lora-r 16 --lora-alpha 32
 
-# OCR 1 ảnh bằng adapter vừa train
+# OCR ảnh / PDF / Word bằng adapter (base phải cùng họ adapter)
 python scripts/eval_ocr.py --image path/to/anh.jpg
-
-# OCR bằng adapter load trực tiếp từ Hub (không cần tải về)
-python scripts/eval_ocr.py --image path/to/anh.jpg --adapter tranhuy67896262/qwen25vl-3b-vi-hwr-lora
+python scripts/eval_ocr.py --image path/to/scan.pdf
+python scripts/eval_ocr.py --image path/to/file.docx
+python scripts/eval_ocr.py --image path/to/anh.jpg --adapter <owner>/qwen25vl-3b-vi-hwr-lora --model Qwen/Qwen2.5-VL-3B-Instruct
 
 # Đánh giá CER/WER trên test split
 python scripts/eval_ocr.py --num-test 200
 
-# Export full model (merge LoRA vào base, chạy độc lập được) — cần GPU >=16GB
+# Export full model (merge LoRA vào base, chạy độc lập) — 3B cần ~8GB+ RAM/VRAM
 python scripts/export_merged.py
-#   --adapter <path-or-repo-id>   adapter khác config (mặc định: từ config)
-#   --output <dir>                nơi xuất (mặc định: models/qwen25vl-*-vi-hwr-lora-merged)
+#   --adapter <path-or-repo-id>   --model <base>   --output <dir>
 
-# Export GGUF (llama.cpp/Ollama) — chạy trên Linux/Colab sau export_merged
+# Export GGUF (llama.cpp/Ollama) — Linux/Colab, sau export_merged
 ./scripts/export_gguf.sh            # convert f16 + quantize Q4_K_M vào models/gguf/
 #   QUANT=Q4_K_M ./scripts/export_gguf.sh   (chọn loại quantize)
 #   LLAMA_CPP_DIR=... ./scripts/export_gguf.sh   (nếu llama.cpp chỗ khác)
 
-# UI Gradio (Colab/terminal): bấm nút Train/OCR/Eval/Export, log realtime, link public
-pip install -q gradio
-python scripts/ui.py
-
-# Push adapter lên Hub (repo sẽ được tạo mới nếu chưa tồn tại)
+# Push adapter lên Hub (repo tự tạo nếu chưa có)
 python scripts/train_qlora.py --push --hub-repo <owner>/qwen25vl-3b-vi-hwr-lora
+```
+> Dataset mặc định: source gốc gated `5CD-AI/Viet-Handwriting-OCR-v2` (phải accept điều khoản trên HF). Đổi bằng `--dataset <owner>/<repo>`.
 
-python scripts/train_qlora.py --push --hub-repo tranhuy67896262/qwen25vl-3b-vi-hwr-lora
-```
-> Dataset mặc định là source gốc gated `5CD-AI/Viet-Handwriting-OCR-v2` (phải đồng ý điều khoản trên HF). Có thể đổi bằng `--dataset <owner>/<repo>`.
-> 
-```angular2html
-pip install torch torchvision --index-url https://download.pytorch.org/whl/cu128
-```
+## Ghi chú quan trọng
+
+- Ảnh train/inference tự chuẩn hóa khổ A4 (pad trắng) và giới hạn pixel để vừa context 1024 token (`A4_STANDARDIZE`, `MAX_PIXELS` trong `configs/configs.py`).
+- `models/`, `data/`, `.hf_cache/`, `.env.dev` không commit (git-ignored). Cache HF nằm trong project nên chạy lại không tải lại.
+- UI offline (không tạo link public): `GRADIO_SHARE=0`.
+- Cần torch CUDA thủ công: `pip install torch torchvision --index-url https://download.pytorch.org/whl/cu128` (wrapper thường tự lo).
