@@ -35,12 +35,14 @@ def _run(cmd, log=""):
 
 # ---------------- Train ----------------
 
-def train_ui(dataset, model):
+def train_ui(dataset, model, data_size):
     cmd = [sys.executable, str(SCRIPT / "train_qlora.py")]
     if dataset:
         cmd += ["--dataset", dataset]
     if model:
         cmd += ["--model", model]
+    if data_size and int(data_size) > 0:
+        cmd += ["--max-samples", str(int(data_size))]
     yield from _run(cmd, "> " + " ".join(cmd) + "\n")
 
 
@@ -120,6 +122,10 @@ def build_app():
         )
 
         with gr.Tab("Train"):
+            gr.Markdown(
+                "Dataset nguồn có **50k+ ảnh**. Chọn **Full** để train toàn bộ (lâu nhất), "
+                "**35k / 10k** để train nhanh hơn."
+            )
             with gr.Row():
                 dataset = gr.Textbox(value=cfg.DATASET_NAME, label="Dataset")
                 model = gr.Dropdown(
@@ -128,11 +134,19 @@ def build_app():
                     value=cfg.MODEL_NAME, label="Model",
                     allow_custom_value=True,
                 )
+            data_size = gr.Radio(
+                choices=[
+                    ("Full (50k+ ảnh)", 0),
+                    ("35k ảnh", 35000),
+                    ("10k ảnh (nhanh)", 10000),
+                ],
+                value=0, label="Cỡ data train",
+            )
             train_btn = gr.Button("▶ Train", variant="primary")
             train_log = gr.Textbox(label="Log", lines=20, max_lines=100)
             train_btn.click(
                 train_ui,
-                inputs=[dataset, model],
+                inputs=[dataset, model, data_size],
                 outputs=train_log,
             )
 
