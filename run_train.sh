@@ -23,14 +23,16 @@ if [ -n "$TOKEN" ]; then
     echo "Da ghi HF_TOKEN vao .env.dev"
 elif [ -z "${HF_TOKEN:-}" ] && ! grep -q "^HF_TOKEN" .env.dev 2>/dev/null; then
     echo "[WARN] Chua co HF_TOKEN. Truyen token lam doi so dau:"
-    echo "  $0 hf_xxxxxxxx --max-samples 100"
+    echo "  $0 hf_xxxxxxxx --train --max-samples 100"
     echo "  (Lay token tai: https://huggingface.co/settings/tokens)"
 fi
 
 # Cờ riêng của run_train.sh (không truyền xuống train_qlora.py):
-#   --ui          : chỉ cài môi trường + mở UI Gradio (không train)
+#   (mặc định)    : chỉ cài tối thiểu + mở UI Gradio (không train, không tải data)
+#   --train       : train thật (cài full torch-CUDA + requirements)
+#   --ui          : giống mặc định (giữ để tương thích cũ)
 #   --eval[=NNN]  : sau khi train, chạy eval CER/WER trên NNN mẫu (mặc định 100)
-DO_UI=""
+DO_UI=1
 DO_EVAL=""
 EVAL_NUM="100"
 NEW_ARGS=()
@@ -38,6 +40,7 @@ HAS_ARGS=""
 for arg in "$@"; do
     case "$arg" in
         --ui)     DO_UI=1 ;;
+        --train)  DO_UI="" ;;
         --eval)   DO_EVAL=1 ;;
         --eval=*) DO_EVAL=1; EVAL_NUM="${arg#--eval=}" ;;
         *)        NEW_ARGS+=("$arg"); HAS_ARGS=1 ;;
@@ -107,9 +110,9 @@ fi
 echo "GPU: $("$PYTHON" -c "import torch; print(torch.cuda.get_device_name(0))" 2>/dev/null || echo 'CPU')"
 
 echo "Bat dau train..."
-echo "  Smoke test: $0 --max-samples 100"
-echo "  Train full: $0"
-echo "  Push Hub  : $0 --push --hub-repo <owner>/qwen25vl-7b-vi-hwr-lora"
+echo "  Smoke test: $0 --train --max-samples 100"
+echo "  Train full: $0 --train"
+echo "  Push Hub  : $0 --train --push --hub-repo <owner>/qwen25vl-7b-vi-hwr-lora"
 echo
 
 # HAS_ARGS thay cho [ ${#NEW_ARGS[@]} -gt 0 ]: mảng rỗng + set -u crash

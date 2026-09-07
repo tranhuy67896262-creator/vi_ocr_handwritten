@@ -115,10 +115,7 @@ def save_token(token):
 
 def build_app():
     cfg = Configs()
-    with gr.Blocks(
-        title="Vi-OCR-Handwritten UI",
-        css=".log-scroll textarea { max-height: 500px !important; overflow-y: auto !important; }",
-    ) as demo:
+    with gr.Blocks(title="Vi-OCR-Handwritten UI") as demo:
         gr.Markdown(
             "# 🚀 Vi-OCR-Handwritten — QLoRA fine-tune Qwen2.5-VL\n"
             "Train / OCR / Eval / Export. Log hiển thị realtime."
@@ -211,4 +208,8 @@ def build_app():
 if __name__ == "__main__":
     # GRADIO_SHARE=0 khi chay offline (khong tao link public). Mac dinh 1.
     share = os.getenv("GRADIO_SHARE", "1") == "1"
-    build_app().launch(server_name="0.0.0.0", share=share)
+    build_app().launch(
+        server_name="0.0.0.0",
+        share=share,
+        css=".log-scroll textarea { max-height: 500px !important; overflow-y: auto !important; }",
+    )

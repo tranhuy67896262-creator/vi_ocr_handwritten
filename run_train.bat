@@ -31,12 +31,13 @@ if not errorlevel 1 set "HAS_TOKEN=1"
 :tokenwarn
 if defined HAS_TOKEN goto :hastoken
 echo [WARN] Chua co HF_TOKEN. Truyen token lam doi so dau:
-echo   %~nx0 hf_xxxxxxxx --max-samples 100
+echo   %~nx0 hf_xxxxxxxx --train --max-samples 100
 :hastoken
 
-REM Che do UI: --ui = chi cai moi truong + mo UI Gradio (khong train)
-set "DO_UI="
-echo %* | findstr /C:"--ui" >nul 2>&1 && set "DO_UI=1"
+REM Mac dinh: chi cai toi thieu + mo UI Gradio (khong train, khong tai data).
+REM --train = train that (cai full torch-CUDA + requirements).
+REM --ui = giong mac dinh (giu de tuong thich cu).
+set "DO_UI=1"
 
 REM Thu gom cac doi so con lai (vi %*% khong doi sau shift).
 REM Bo --ui / --eval[=N] ra khoi REST (co rieng cua wrapper, giong run_train.sh).
@@ -46,6 +47,8 @@ set "REST="
 :argloop
 if "%~1"=="" goto :argsdone
 if "%~1"=="--ui" goto :nextarg
+if "%~1"=="--train" set "DO_UI="
+if "%~1"=="--train" goto :nextarg
 echo %~1 | findstr /R /C:"^--eval" >nul 2>&1
 if errorlevel 1 goto :notflag
 set "DO_EVAL=1"
@@ -121,8 +124,8 @@ if errorlevel 1 (
 )
 
 echo Start training...
-echo   Smoke test: %~nx0 --max-samples 100
-echo   Real train: run on Colab GPU via run_train.sh
+echo   Smoke test: %~nx0 --train --max-samples 100
+echo   Real train: run on Colab GPU via run_train.sh --train
 echo(
 
 "%PY%" scripts\train_qlora.py %REST%
