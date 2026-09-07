@@ -1,6 +1,6 @@
 # AGENTS.md
 
-Fine-tune **Qwen2.5-VL-7B-Instruct** bằng **QLoRA** cho chữ viết tay tiếng Việt. Mục tiêu thiết kế: **chỉ thêm kiến thức, không mất kiến thức gốc** → base model đóng băng, chỉ train LoRA adapter (lr 1e-5–2e-5, 1–2 epoch). Đừng nâng lr (~2e-4) hay kéo dài epoch. KL-regularization (mặc định bật) chống catastrophic forgetting; chỉ tắt (`--no-kl`) khi VRAM hẹp.
+Fine-tune **Qwen2.5-VL-3B-Instruct** bằng **QLoRA** cho chữ viết tay tiếng Việt. Mục tiêu thiết kế: **chỉ thêm kiến thức, không mất kiến thức gốc** → base model đóng băng, chỉ train LoRA adapter (lr 1e-5–2e-5, 1–2 epoch). Đừng nâng lr (~2e-4) hay kéo dài epoch. KL-regularization (mặc định bật) chống catastrophic forgetting; chỉ tắt (`--no-kl`) khi VRAM hẹp.
 
 ## Chạy & verify
 
@@ -14,7 +14,7 @@ Fine-tune **Qwen2.5-VL-7B-Instruct** bằng **QLoRA** cho chữ viết tay tiế
 
 ## Cấu trúc & config
 
-- `configs/configs.py` là nguồn sự thật duy nhất. `ADAPTER_DIR` tự suy từ `MODEL_NAME` (hiện tại `models/qwen25vl-7b-vi-hwr-lora/`) — đừng hard-code đường dẫn `*-3b-*` cũ còn sót trong README. CLI ghi đè field (`--dataset/--model/--epochs/--lr/--batch-size/--max-seq-len/--lora-r/--lora-alpha/--no-kl/--push/--hub-repo`). `--model` tự tính lại `ADAPTER_DIR` trong `train_qlora.py` (vì đó là class attribute) — đổi model kiểu khác mà không làm vậy sẽ ghi đè nhầm adapter.
+- `configs/configs.py` là nguồn sự thật duy nhất. `ADAPTER_DIR` tự suy từ `MODEL_NAME` (hiện tại `models/qwen25vl-3b-vi-hwr-lora/`) — đừng hard-code đường dẫn `*-3b-*` cũ còn sót trong README. CLI ghi đè field (`--dataset/--model/--epochs/--lr/--batch-size/--max-seq-len/--lora-r/--lora-alpha/--no-kl/--push/--hub-repo`). `--model` tự tính lại `ADAPTER_DIR` trong `train_qlora.py` (vì đó là class attribute) — đổi model kiểu khác mà không làm vậy sẽ ghi đè nhầm adapter.
 - `src/datasets/dataset.py`: `detect_columns()` auto-dò cột ảnh/văn bản; `load_dataset_with_fallback` thử `config.DATASET_NAME` (mặc định source gốc gated `5CD-AI/Viet-Handwriting-OCR-v2`). Đừng hard-code tên cột (áp dụng cả train lẫn eval). Ảnh chuẩn hóa khổ A4 (`standardize_a4` trong `src/utils/image.py` — pad trắng, canvas bội 28 trong budget `MAX_PIXELS`), gọi ở cả `convert_to_chat` lẫn `predict_image` theo cờ `A4_STANDARDIZE`.
 - `src/datasets/collator.py`: mask `labels = -100` cho prompt **và** padding. **Giữ `add_special_tokens=False` ở cả processor-batch lẫn tokenizer-prompt** (collator) và `predict.py` — bỏ ra lệch label/decode 1 token.
 - `src/modeling/load.py`: `load_model_and_processor` trả 3-tuple `(model, processor, use_4bit)` — `use_4bit` là giá trị thực sau fallback (không CUDA / thiếu `bitsandbytes` → LoRA full-precision). `src/train/trainer.py` dùng `use_4bit` này để chọn optimizer `paged_adamw_8bit` vs `adamw_torch` — đừng đọc `config.USE_4BIT` (luôn True). Trainer còn set `remove_unused_columns=False` và `gradient_checkpointing_kwargs={"use_reentrant": False}` — giữ nguyên.

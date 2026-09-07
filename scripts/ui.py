@@ -14,8 +14,8 @@ from configs.configs import Configs
 SCRIPT = PROJECT_ROOT / "scripts"
 
 MODEL_CHOICES = [
-    "Qwen/Qwen2.5-VL-7B-Instruct",
     "Qwen/Qwen2.5-VL-3B-Instruct",
+    "Qwen/Qwen2.5-VL-7B-Instruct",
 ]
 
 
