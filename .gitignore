@@ -31,6 +31,9 @@ local
 local/
 .hf_cache/
 
+# Gradio runtime cache (tu sinh khi chay UI, khong commit)
+.gradio/
+
 # Jupyter
 .ipynb_checkpoints
 *.ipynb
