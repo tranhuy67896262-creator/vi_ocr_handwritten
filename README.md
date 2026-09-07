@@ -107,7 +107,7 @@ python scripts/train_qlora.py --push --hub-repo <owner>/qwen25vl-3b-vi-hwr-lora
 
 python scripts/train_qlora.py --push --hub-repo tranhuy67896262/qwen25vl-3b-vi-hwr-lora
 ```
-> Dataset mặc định là `tranhuy67896262/Viet-Handwriting-OCR-v2-ds` (public). Nếu chưa có, script fallback sang dataset gốc gated `5CD-AI/Viet-Handwriting-OCR-v2` (phải đồng ý điều khoản trên HF). Có thể đổi bằng `--dataset <owner>/<repo>`.
+> Dataset mặc định là source gốc gated `5CD-AI/Viet-Handwriting-OCR-v2` (phải đồng ý điều khoản trên HF). Có thể đổi bằng `--dataset <owner>/<repo>`.
 > 
 ```angular2html
 pip install torch torchvision --index-url https://download.pytorch.org/whl/cu128

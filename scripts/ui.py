@@ -115,7 +115,10 @@ def save_token(token):
 
 def build_app():
     cfg = Configs()
-    with gr.Blocks(title="Vi-OCR-Handwritten UI") as demo:
+    with gr.Blocks(
+        title="Vi-OCR-Handwritten UI",
+        css=".log-scroll textarea { max-height: 500px !important; overflow-y: auto !important; }",
+    ) as demo:
         gr.Markdown(
             "# 🚀 Vi-OCR-Handwritten — QLoRA fine-tune Qwen2.5-VL\n"
             "Train / OCR / Eval / Export. Log hiển thị realtime."
@@ -142,8 +145,13 @@ def build_app():
                 ],
                 value=0, label="Cỡ data train",
             )
+            gr.Markdown(
+                "🔗 Dataset: [5CD-AI/Viet-Handwriting-OCR-v2](https://huggingface.co/datasets/5CD-AI/Viet-Handwriting-OCR-v2) | "
+                "Models: [Qwen2.5-VL-7B-Instruct](https://huggingface.co/Qwen/Qwen2.5-VL-7B-Instruct) · "
+                "[Qwen2.5-VL-3B-Instruct](https://huggingface.co/Qwen/Qwen2.5-VL-3B-Instruct)"
+            )
             train_btn = gr.Button("▶ Train", variant="primary")
-            train_log = gr.Textbox(label="Log", lines=20, max_lines=100)
+            train_log = gr.Textbox(label="Log", lines=20, max_lines=30, autoscroll=True, elem_classes=["log-scroll"])
             train_btn.click(
                 train_ui,
                 inputs=[dataset, model, data_size],
@@ -176,13 +184,13 @@ def build_app():
                 )
                 eval_adapter = gr.Textbox(value=str(cfg.ADAPTER_DIR), label="Adapter")
             eval_btn = gr.Button("📊 Eval", variant="primary")
-            eval_log = gr.Textbox(label="Log", lines=20, max_lines=100)
+            eval_log = gr.Textbox(label="Log", lines=20, max_lines=30, autoscroll=True, elem_classes=["log-scroll"])
             eval_btn.click(eval_ui, inputs=[num_test, eval_adapter], outputs=eval_log)
 
         with gr.Tab("Export"):
             export_adapter = gr.Textbox(value=str(cfg.ADAPTER_DIR), label="Adapter")
             export_btn = gr.Button("📦 Export full model", variant="primary")
-            export_log = gr.Textbox(label="Log", lines=20, max_lines=100)
+            export_log = gr.Textbox(label="Log", lines=20, max_lines=30, autoscroll=True, elem_classes=["log-scroll"])
             export_btn.click(export_ui, inputs=[export_adapter], outputs=export_log)
 
         with gr.Tab("Settings"):

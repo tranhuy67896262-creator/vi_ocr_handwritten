@@ -51,8 +51,8 @@ def convert_to_chat(example, image_col, text_col, system_prompt):
 
 
 def load_dataset_with_fallback(config):
-    """Load dataset fork; nếu không load được thì fallback sang dataset gốc."""
-    candidates = [config.DATASET_NAME, "5CD-AI/Viet-Handwriting-OCR-v2"]
+    """Load dataset theo config (mặc định là source gốc 5CD-AI/Viet-Handwriting-OCR-v2)."""
+    candidates = list(dict.fromkeys([config.DATASET_NAME, "5CD-AI/Viet-Handwriting-OCR-v2"]))
     last_err = None
     for name in candidates:
         try:
