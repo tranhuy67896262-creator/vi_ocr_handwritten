@@ -1,12 +1,13 @@
 # Pre-commit hook: chặn commit nếu pylint fail (chạy đúng lệnh như CI).
-# Cài 1 lần: pip install pre-commit && pre-commit install
-# Commit từ terminal đã active .venv (cần lệnh `pylint` trên PATH).
+# Wrapper scripts/lint_hook.py tự tìm python có pylint (python đang chạy hook
+# hoặc .venv của project) nên commit từ VS Code/opencode/terminal nào cũng được.
+# Không tìm thấy tool thì bỏ qua (không chặn). Cài 1 lần: pre-commit install.
 repos:
   - repo: local
     hooks:
       - id: pylint
         name: pylint
-        entry: pylint configs src scripts main.py
+        entry: python scripts/lint_hook.py
         language: system
         types: [python]
         pass_filenames: false
