@@ -1,6 +1,7 @@
 """UI Gradio: Fine-tune / OCR / Eval / Export / Settings."""
 import os
 import re
+import shutil
 import subprocess
 import sys
 from pathlib import Path
@@ -35,8 +36,8 @@ def sync_adapter(model_name, current):
     return cur
 
 
-def _run(cmd, log=""):
-    """Chạy 1 script con, stream output realtime vào log."""
+def _run(cmd, log="", cwd=None):
+    """Chạy 1 script con, stream output realtime vào log (cwd mặc định project)."""
     with subprocess.Popen(
         cmd,
         stdout=subprocess.PIPE,
@@ -45,7 +46,7 @@ def _run(cmd, log=""):
         encoding="utf-8",
         errors="replace",
         bufsize=1,
-        cwd=str(PROJECT_ROOT),
+        cwd=str(cwd or PROJECT_ROOT),
     ) as proc:
         for line in proc.stdout:
             log += line
@@ -241,6 +242,54 @@ def _mmproj_sibling(gguf_path):
     cands = sorted(Path(gguf_path).parent.glob("*mmproj*.gguf"))
     picked = [c for c in cands if str(c) != str(gguf_path)]
     return str(picked[0]) if picked else None
+
+
+def _default_ollama_name():
+    """Tên model Ollama gợi ý từ file gguf mới nhất (bỏ hậu tố quant)."""
+    gguf = _latest_gguf()
+    if not gguf:
+        return "qwen25vl-3b-vi-hwr"
+    stem = Path(gguf).stem
+    for suf in ("-Q4_K_M", "-Q4_0", "-Q8_0", "-f16"):
+        if stem.endswith(suf):
+            stem = stem[: -len(suf)]
+            break
+    return stem
+
+
+def import_ollama_ui(model_name):
+    """Import gguf + Modelfile vào Ollama đang chạy (`ollama create`)."""
+    name = (model_name or "").strip() or _default_ollama_name()
+    gguf = _latest_gguf()
+    if not gguf:
+        msg = "Chưa có file .gguf — bấm Download file .gguf để export trước."
+        yield msg, msg
+        return
+    if shutil.which("ollama") is None:
+        msg = ("Chưa có Ollama CLI — cài tại https://ollama.com/download "
+               "(Colab: curl -fsSL https://ollama.com/install.sh | sh).")
+        yield msg, msg
+        return
+    gguf_dir = str(Path(gguf).parent)
+    if not Path(gguf_dir, "Modelfile").exists():
+        msg = f"Thiếu {gguf_dir}/Modelfile — bấm Download file .gguf để sinh lại."
+        yield msg, msg
+        return
+    try:
+        r = subprocess.run(["ollama", "list"], capture_output=True, timeout=30, check=False)
+        server_ok = r.returncode == 0
+    except Exception:
+        server_ok = False
+    if not server_ok:
+        msg = "Ollama server chưa chạy — chạy `ollama serve` trước (Colab chạy nền). "
+        yield msg, msg
+        return
+    log = ""
+    for chunk in _run(["ollama", "create", name, "-f", "Modelfile"],
+                      f"> ollama create {name} -f Modelfile\n", cwd=gguf_dir):
+        log = chunk
+        yield log, "⏳ Đang import vào Ollama..."
+    yield (log, f"✅ Xong — test: `ollama run {name} \"Đọc chữ trong ảnh\" -- /path/to/anh.jpg`")
 
 
 def push_gguf_ui(hub_repo):
@@ -529,6 +578,14 @@ def build_app():
             push_ad_msg = gr.Markdown()
             push_ad_btn.click(push_adapter_ui, inputs=[hub_repo_in, export_adapter],
                               outputs=push_ad_msg)
+
+            gr.Markdown("### 🦙 Import vào Ollama đang chạy trên máy này")
+            ollama_name_in = gr.Textbox(value=_default_ollama_name(),
+                                        label="Tên model Ollama")
+            import_btn = gr.Button("🦙 Import .gguf vào Ollama", variant="secondary")
+            import_msg = gr.Markdown()
+            import_btn.click(import_ollama_ui, inputs=[ollama_name_in],
+                             outputs=[export_log, import_msg])
 
         with gr.Tab("Settings"):
             tok_status = gr.Markdown(value=token_status())
