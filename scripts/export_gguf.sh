@@ -34,12 +34,31 @@ fi
 
 mkdir -p "$OUT_DIR"
 
-echo "Convert HF -> GGUF (f16)..."
-"$LLAMA_CPP/convert_hf_to_gguf.py" "$MERGE_DIR" \
-    --outfile "$OUT_DIR/$TAG-f16.gguf" --outtype f16
-
-echo "Output:"
-ls -lh "$OUT_DIR"/*.gguf
+if [ "$QUANT" != "none" ]; then
+    # Convert thang ra ban quantize (nhanh gap doi: bo qua file f16 trung gian ~6GB).
+    echo "Convert HF -> GGUF ($QUANT, truc tiep)..."
+    if "$LLAMA_CPP/convert_hf_to_gguf.py" "$MERGE_DIR" \
+        --outfile "$OUT_DIR/$TAG-$QUANT.gguf" \
+        --outtype "$(echo "$QUANT" | tr '[:upper:]' '[:lower:]')"; then
+        echo "GGUF da xong:"
+        ls -lh "$OUT_DIR"/*.gguf
+    else
+        echo "[WARN] convert truc tiep that bai, fallback f16 + llama-quantize..."
+        "$LLAMA_CPP/convert_hf_to_gguf.py" "$MERGE_DIR" \
+            --outfile "$OUT_DIR/$TAG-f16.gguf" --outtype f16
+        echo "Quantize -> $QUANT..."
+        "$LLAMA_CPP/build/bin/llama-quantize" \
+            "$OUT_DIR/$TAG-f16.gguf" \
+            "$OUT_DIR/$TAG-$QUANT.gguf" "$QUANT"
+        echo "GGUF da xong:"
+        ls -lh "$OUT_DIR"/*.gguf
+    fi
+else
+    echo "Convert HF -> GGUF (f16)..."
+    "$LLAMA_CPP/convert_hf_to_gguf.py" "$MERGE_DIR" \
+        --outfile "$OUT_DIR/$TAG-f16.gguf" --outtype f16
+    echo "Bo qua quantize (QUANT=none). GGUF f16 da xong."
+fi
 
 # mmproj (vision projector): Qwen-VL OCR ảnh BẮT BUỘC cần file này.
 # Converter chạy lần 2 với --mmproj (llama.cpp mới hỗ trợ qwen2/2.5vl).
@@ -47,17 +66,6 @@ echo "Convert mmproj (projector vision - OCR anh can file nay)..."
 "$LLAMA_CPP/convert_hf_to_gguf.py" --mmproj "$MERGE_DIR" \
     --outfile "$OUT_DIR/mmproj-$TAG-f16.gguf" --outtype f16 \
     || echo "[WARN] convert mmproj that bai (llama.cpp cu?). Tiep tuc khong co mmproj."
-
-if [ "$QUANT" != "none" ]; then
-    echo "Quantize -> $QUANT..."
-    "$LLAMA_CPP/build/bin/llama-quantize" \
-        "$OUT_DIR/$TAG-f16.gguf" \
-        "$OUT_DIR/$TAG-$QUANT.gguf" "$QUANT"
-    echo "GGUF da xong:"
-    ls -lh "$OUT_DIR"/*.gguf
-else
-    echo "Bo qua quantize (QUANT=none). GGUF f16 da xong."
-fi
 
 # mmproj: tim file thuc te (converter co the dat ten hoi khac), khong doan ten.
 # Ollama nap vision qua Modelfile (FROM text + ADAPTER mmproj).

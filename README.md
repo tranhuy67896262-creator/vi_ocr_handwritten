@@ -113,7 +113,7 @@ python scripts/export_merged.py
 #   --adapter <path-or-repo-id>   --model <base>   --output <dir>
 
 # Export GGUF (llama.cpp/Ollama) — Linux/Colab, sau export_merged
-./scripts/export_gguf.sh            # convert f16 + quantize Q4_K_M + convert mmproj + sinh Modelfile vào models/gguf/
+./scripts/export_gguf.sh            # convert thang Q4_K_M (bo f16 trung gian) + convert mmproj + sinh Modelfile vào models/gguf/
 #   QUANT=Q4_K_M ./scripts/export_gguf.sh   (chọn loại quantize)
 #   LLAMA_CPP_DIR=... ./scripts/export_gguf.sh   (nếu llama.cpp chỗ khác)
 
