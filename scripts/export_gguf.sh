@@ -5,7 +5,7 @@ cd "$(dirname "$0")/.."
 # Export GGUF từ merged HF model (gom ca text model + mmproj vision).
 # Bước 1: python scripts/export_merged.py        (cần trước)
 # Bước 2: ./scripts/export_gguf.sh                (convert + quantize + mmproj + Modelfile)
-# Output trong OUT_DIR: *-f16.gguf, *-Q4_K_M.gguf, mmproj-*.gguf, Modelfile (FROM + ADAPTER).
+# Output trong OUT_DIR: *-f16.gguf, *-Q4_K_M.gguf, mmproj-*.gguf, Modelfile (FROM + ADAPTER + SYSTEM OCR).
 #
 # Biến môi trường tuỳ chọn:
 #   LLAMA_CPP_DIR  thư mục llama.cpp (mặc định /content/llama.cpp)
@@ -82,6 +82,9 @@ else
     cat > "$OUT_DIR/Modelfile" <<EOF
 FROM ./$(basename "$OLLAMA_GGUF")
 ADAPTER ./$(basename "$MMPROJ")
+SYSTEM """Bạn là một trợ lý AI chuyên gia về OCR. Nhiệm vụ của bạn là trích xuất chính xác văn bản tiếng Việt viết tay từ hình ảnh. Giữ nguyên chính tả, dấu câu và cấu trúc dòng."""
+PARAMETER temperature 0.1
+PARAMETER num_ctx 4096
 EOF
     echo "Da viet Modelfile: $OUT_DIR/Modelfile"
     echo

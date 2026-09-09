@@ -118,7 +118,7 @@ python scripts/export_merged.py
 #   LLAMA_CPP_DIR=... ./scripts/export_gguf.sh   (nếu llama.cpp chỗ khác)
 
 # Chạy trên Ollama (cần CẢ 2 file: model + mmproj vision)
-cd models/gguf   # đã có sẵn Modelfile (FROM text + ADAPTER mmproj) do export_gguf.sh sinh
+cd models/gguf   # đã có sẵn Modelfile (FROM text + ADAPTER mmproj + SYSTEM OCR) do export_gguf.sh sinh
 ollama create qwen25vl-3b-vi-hwr -f Modelfile
 #   hoặc bấm nút import trong tab Export của UI (tự chạy lệnh trên, cần ollama serve đang chạy)
 ollama run qwen25vl-3b-vi-hwr "Đọc chữ trong ảnh" -- /path/to/anh.jpg
