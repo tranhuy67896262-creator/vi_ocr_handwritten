@@ -113,9 +113,18 @@ python scripts/export_merged.py
 #   --adapter <path-or-repo-id>   --model <base>   --output <dir>
 
 # Export GGUF (llama.cpp/Ollama) — Linux/Colab, sau export_merged
-./scripts/export_gguf.sh            # convert f16 + quantize Q4_K_M vào models/gguf/
+./scripts/export_gguf.sh            # convert f16 + quantize Q4_K_M + convert mmproj + sinh Modelfile vào models/gguf/
 #   QUANT=Q4_K_M ./scripts/export_gguf.sh   (chọn loại quantize)
 #   LLAMA_CPP_DIR=... ./scripts/export_gguf.sh   (nếu llama.cpp chỗ khác)
+
+# Chạy trên Ollama (cần CẢ 2 file: model + mmproj vision)
+cd models/gguf   # đã có sẵn Modelfile (FROM text + ADAPTER mmproj) do export_gguf.sh sinh
+ollama create qwen25vl-3b-vi-hwr -f Modelfile
+ollama run qwen25vl-3b-vi-hwr "Đọc chữ trong ảnh" -- /path/to/anh.jpg
+ollama push <owner>/qwen25vl-3b-vi-hwr
+#   Thiếu mmproj → lỗi 500 "image input is not supported ... provide the mmproj".
+#   Ollama ra chữ linh tinh nhưng llama.cpp đọc đúng → lỗi phía Ollama, test bằng:
+#   llama-mtmd-cli -m model.gguf --mmproj mmproj.gguf --image anh.jpg -p "..." -n 256
 
 # Push adapter lên Hub (repo tự tạo nếu chưa có)
 python scripts/train_qlora.py --push --hub-repo <owner>/qwen25vl-3b-vi-hwr-lora

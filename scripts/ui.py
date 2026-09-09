@@ -236,6 +236,13 @@ def export_gguf_ui(adapter, model):
                _hidden, "⚠️ Thất bại — xem Log.")
 
 
+def _mmproj_sibling(gguf_path):
+    """File mmproj cùng thư mục với gguf (nếu có) — Ollama/llama.cpp cần để OCR ảnh."""
+    cands = sorted(Path(gguf_path).parent.glob("*mmproj*.gguf"))
+    picked = [c for c in cands if str(c) != str(gguf_path)]
+    return str(picked[0]) if picked else None
+
+
 def push_gguf_ui(hub_repo):
     """Push file .gguf mới nhất lên Hugging Face Hub để có link tải nhanh/ổn định."""
     hub_repo = (hub_repo or "").strip()
@@ -254,8 +261,15 @@ def push_gguf_ui(hub_repo):
         name = Path(gguf).name
         api.upload_file(path_or_fileobj=gguf, path_in_repo=name,
                         repo_id=hub_repo, token=config.HF_TOKEN)
-        return (f"✅ Đã push: https://huggingface.co/{hub_repo}/blob/main/{name}\n"
-                f"Tải từ link đó (nhanh, hỗ trợ resume).")
+        urls = [f"https://huggingface.co/{hub_repo}/blob/main/{name}"]
+        mm = _mmproj_sibling(gguf)
+        if mm:
+            mname = Path(mm).name
+            api.upload_file(path_or_fileobj=mm, path_in_repo=mname,
+                            repo_id=hub_repo, token=config.HF_TOKEN)
+            urls.append(f"https://huggingface.co/{hub_repo}/blob/main/{mname}")
+        return ("✅ Đã push:\n" + "\n".join(urls) + "\n"
+                "Tải cả 2 file về cùng thư mục, Modelfile đã có sẵn trong models/gguf/.")
     except Exception as exc:
         return _push_error(exc)
 
