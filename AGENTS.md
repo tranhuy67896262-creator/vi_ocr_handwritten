@@ -10,7 +10,7 @@ Fine-tune **Qwen2.5-VL-3B-Instruct** bằng **QLoRA** cho chữ viết tay tiế
 - Batch quirk (đã verify): `=` là delimiter của cmd → `--eval=50` thành 2 arg (wrapper nuốt số sau `--eval`); đừng parse `--eval*` bằng regex findstr (`*`/`$` hỏng sau `[...]`); không ngoặc đơn trong echo/REM nằm trong block `if (...)`.
 - `.sh` quirk: giữ `HAS_ARGS` thay vì `[ ${#NEW_ARGS[@]} ... ]` (mảng rỗng + `set -u` crash bash cũ).
 - `requirements.txt` **không** chứa torch (PyPI mặc định bản CPU; wrapper cài CUDA `cu128`). Ghim `torchao>=0.16` trừ Windows (`sys_platform != "win32"`): peft `ImportError` khi gắn adapter nếu dính torchao 0.10.0 của Colab; chế độ UI cài best-effort.
-- Smoke test: `python scripts/train_qlora.py --max-samples 100`. Lint: `pylint configs src scripts main.py` (phải exit 0 — CI `.github/workflows/pylint.yml` chạy đúng lệnh này trên Python 3.13; config trong `pyproject.toml`, max-line 120). Không test suite — verify nhanh bằng `python -m compileall configs src scripts main.py` (PowerShell không expand `src/**/*.py`).
+- Smoke test: `python scripts/train_qlora.py --max-samples 100`. Lint: `pylint configs src scripts main.py` (phải exit 0 — CI `.github/workflows/pylint.yml` chạy đúng lệnh này trên Python 3.13; config trong `pyproject.toml`, max-line 120). Local: cài extension Pylint của VS Code (tự đọc `pyproject.toml`, báo ngay khi gõ) + `pre-commit install` 1 lần để hook chặn commit lỗi (commit từ terminal đã active `.venv`). Không test suite — verify nhanh bằng `python -m compileall configs src scripts main.py` (PowerShell không expand `src/**/*.py`).
 - Không bao giờ commit `models/` / `data/` / `.hf_cache/` / `.env.dev` (đã git-ignore).
 
 ## Cấu trúc & config
