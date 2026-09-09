@@ -1,3 +1,4 @@
+"""Cấu hình tập trung cho project Vi-OCR-Handwritten."""
 import os
 from pathlib import Path
 

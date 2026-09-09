@@ -1,3 +1,4 @@
+"""Logging ra file + hook lỗi toàn cục."""
 import logging
 import sys
 import traceback

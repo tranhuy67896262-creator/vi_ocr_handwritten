@@ -1,13 +1,15 @@
+"""Load Qwen2.5-VL + processor, gắn LoRA."""
 import torch
 from peft import LoraConfig, get_peft_model, prepare_model_for_kbit_training
 from transformers import BitsAndBytesConfig, Qwen2_5_VLForConditionalGeneration, Qwen2_5_VLProcessor
 
 
 def load_processor(config, model_name=None):
+    """Load processor + tokenizer Qwen2.5-VL."""
     processor = Qwen2_5_VLProcessor.from_pretrained(
         model_name or config.MODEL_NAME, token=config.HF_TOKEN or None
     )
-    processor.tokenizer.padding_side = "right"
+    processor.tokenizer.padding_side = "right"  # pylint: disable=no-member
     return processor
 
 
@@ -17,7 +19,7 @@ def resolve_attn_implementation(config):
     if config.ATTN_IMPLEMENTATION != "auto":
         return config.ATTN_IMPLEMENTATION
     try:
-        import flash_attn  # noqa: F401
+        import flash_attn  # noqa: F401  # pylint: disable=unused-import
         return "flash_attention_2"
     except ImportError:
         return "sdpa"
@@ -39,7 +41,7 @@ def load_model_and_processor(config):
 
     if use_4bit:
         try:
-            import bitsandbytes  # noqa: F401
+            import bitsandbytes  # noqa: F401  # pylint: disable=unused-import
         except ImportError:
             print("bitsandbytes không có sẵn -> chuyển sang LoRA full-precision.")
             use_4bit = False

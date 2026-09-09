@@ -1,3 +1,4 @@
+"""OCR 1 file / đánh giá CER-WER trên test split."""
 import argparse
 import sys
 from pathlib import Path
@@ -16,6 +17,7 @@ from src.utils.logging import log_and_exit, setup_file_logging
 
 
 def main():
+    """Parse CLI và chạy OCR/eval."""
     parser = argparse.ArgumentParser(
         description="OCR 1 ảnh hoặc đánh giá CER/WER trên test split"
     )

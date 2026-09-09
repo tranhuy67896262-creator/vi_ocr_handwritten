@@ -1,3 +1,4 @@
+"""Trainer KL-regularization chống catastrophic forgetting."""
 import torch
 import torch.nn.functional as F
 from transformers import Trainer

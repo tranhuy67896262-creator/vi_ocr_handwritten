@@ -1,3 +1,4 @@
+"""Vòng train + lưu adapter + metadata."""
 import json
 import math
 from datetime import datetime
@@ -12,28 +13,29 @@ from src.utils.logging import setup_file_logging
 
 
 def get_training_args(config, output_dir, use_4bit, num_train_steps=None):
+    """Dựng TrainingArguments từ config."""
     use_bf16 = torch.cuda.is_bf16_supported()
-    args = dict(
-        output_dir=str(output_dir),
-        per_device_train_batch_size=config.BATCH_SIZE,
-        per_device_eval_batch_size=config.BATCH_SIZE,
-        gradient_accumulation_steps=config.GRADIENT_ACCUMULATION_STEPS,
-        num_train_epochs=config.NUM_EPOCHS,
-        learning_rate=config.LEARNING_RATE,
-        lr_scheduler_type=config.LR_SCHEDULER,
-        max_grad_norm=1.0,
-        logging_steps=config.LOGGING_STEPS,
-        save_steps=config.SAVE_STEPS,
-        save_total_limit=2,
-        bf16=use_bf16,
-        fp16=not use_bf16,
-        optim="paged_adamw_8bit" if use_4bit else "adamw_torch",
-        gradient_checkpointing=config.GRADIENT_CHECKPOINTING,
-        remove_unused_columns=False,
-        seed=config.SEED,
-        report_to=["none"],
-        save_strategy="steps",
-    )
+    args = {
+        "output_dir": str(output_dir),
+        "per_device_train_batch_size": config.BATCH_SIZE,
+        "per_device_eval_batch_size": config.BATCH_SIZE,
+        "gradient_accumulation_steps": config.GRADIENT_ACCUMULATION_STEPS,
+        "num_train_epochs": config.NUM_EPOCHS,
+        "learning_rate": config.LEARNING_RATE,
+        "lr_scheduler_type": config.LR_SCHEDULER,
+        "max_grad_norm": 1.0,
+        "logging_steps": config.LOGGING_STEPS,
+        "save_steps": config.SAVE_STEPS,
+        "save_total_limit": 2,
+        "bf16": use_bf16,
+        "fp16": not use_bf16,
+        "optim": "paged_adamw_8bit" if use_4bit else "adamw_torch",
+        "gradient_checkpointing": config.GRADIENT_CHECKPOINTING,
+        "remove_unused_columns": False,
+        "seed": config.SEED,
+        "report_to": ["none"],
+        "save_strategy": "steps",
+    }
     if num_train_steps:
         args["warmup_steps"] = max(1, int(config.WARMUP_RATIO * num_train_steps))
     if config.GRADIENT_CHECKPOINTING:
@@ -56,6 +58,7 @@ def _latest_checkpoint(checkpoints_dir):
 
 def train(config, model, processor, train_ds, eval_ds=None, push=False, hub_repo_id="",
           use_4bit=None, resume=False, save_steps=None):
+    """Train LoRA, lưu adapter + metadata (push Hub nếu cần)."""
     if use_4bit is None:
         use_4bit = config.USE_4BIT
     if save_steps is not None:
@@ -77,13 +80,13 @@ def train(config, model, processor, train_ds, eval_ds=None, push=False, hub_repo
     args = get_training_args(config, config.MODELS_DIR / "checkpoints", use_4bit, num_train_steps)
 
     trainer_cls = KLLoRATrainer if config.KL_REGULARIZATION else Trainer
-    trainer_kwargs = dict(
-        model=model,
-        args=args,
-        train_dataset=train_ds,
-        eval_dataset=eval_ds,
-        data_collator=collator,
-    )
+    trainer_kwargs = {
+        "model": model,
+        "args": args,
+        "train_dataset": train_ds,
+        "eval_dataset": eval_ds,
+        "data_collator": collator,
+    }
     if trainer_cls is KLLoRATrainer:
         trainer_kwargs["kl_coef"] = config.KL_COEFFICIENT
     trainer = trainer_cls(**trainer_kwargs)
@@ -107,7 +110,8 @@ def train(config, model, processor, train_ds, eval_ds=None, push=False, hub_repo
     if push:
         if not hub_repo_id:
             raise ValueError(
-                "Chưa có tên repo Hub để push. Truyền --hub-repo <owner>/<repo> (repo sẽ được tạo mới nếu chưa tồn tại)."
+                "Chưa có tên repo Hub để push. "
+                "Truyền --hub-repo <owner>/<repo> (repo sẽ được tạo mới nếu chưa tồn tại)."
             )
         model.push_to_hub(hub_repo_id, token=config.HF_TOKEN)
         processor.push_to_hub(hub_repo_id, token=config.HF_TOKEN)

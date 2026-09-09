@@ -1,0 +1,34 @@
+# Pylint config cho repo (chạy: pylint configs src scripts main.py).
+# Từng nhóm check bị tắt đều có lý do dưới đây — đừng bật lại khi chưa đọc.
+
+[tool.pylint.messages_control]
+disable = [
+  # C0413: scripts chen sys.path truoc import (quy uoc repo, xem AGENTS.md).
+  "wrong-import-position",
+  # C0411: pylint nhan nham PyPI `datasets` la first-party (repo co src/datasets/).
+  "wrong-import-order",
+  # C0415: lazy import torch/gradio/hf (deps nang, tuy chon theo che do UI/train).
+  "import-outside-toplevel",
+  # W0718: UI hien loi thay vi crash; dataset fallback thu candidate tiep theo.
+  "broad-exception-caught",
+  # C0103: config fields UPPER_CASE la quy uoc repo.
+  "invalid-name",
+  # W0212: python-docx bat buoc dung _element (khong co public API).
+  "protected-access",
+  # R0903/R0912/R0913/R0914/R0915/R0917: entry points + UI builder von dai,
+  # truyen nhieu param tuong minh — refactor khong tang gia tri o repo co nay.
+  "too-few-public-methods",
+  "too-many-branches",
+  "too-many-arguments",
+  "too-many-positional-arguments",
+  "too-many-locals",
+  "too-many-statements",
+]
+
+[tool.pylint.typecheck]
+# Gradio gan method dong (click/change/launch); astroid loi thoi LANCZOS cua Pillow.
+generated-members = ["click", "change", "launch", "LANCZOS"]
+
+[tool.pylint.format]
+# Tieng Viet + URL + f-string hint: 100 qua chat, 120 van bat duoc dong le.
+max-line-length = 120

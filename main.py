@@ -1,7 +1,9 @@
+"""Stub in config project."""
 from configs.configs import Configs
 
 
 def main():
+    """In config project ra terminal."""
     # Khởi tạo config
     config = Configs()
 
@@ -20,7 +22,6 @@ def main():
         print("⚠️  Cảnh báo: HF_TOKEN chưa được set!")
         print("   Hãy thêm token vào file .env.dev")
         print("   Lấy token tại: https://huggingface.co/settings/tokens")
-        return
 
     # Tiếp tục với code load dataset...
 

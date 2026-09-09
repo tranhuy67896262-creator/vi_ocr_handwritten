@@ -1,3 +1,4 @@
+"""UI Gradio: Fine-tune / OCR / Eval / Export / Settings."""
 import os
 import re
 import subprocess
@@ -36,7 +37,7 @@ def sync_adapter(model_name, current):
 
 def _run(cmd, log=""):
     """Chạy 1 script con, stream output realtime vào log."""
-    proc = subprocess.Popen(
+    with subprocess.Popen(
         cmd,
         stdout=subprocess.PIPE,
         stderr=subprocess.STDOUT,
@@ -45,17 +46,18 @@ def _run(cmd, log=""):
         errors="replace",
         bufsize=1,
         cwd=str(PROJECT_ROOT),
-    )
-    for line in proc.stdout:
-        log += line
-        yield log
-    proc.wait()
-    yield log + f"\n[Thoát với mã: {proc.returncode}]"
+    ) as proc:
+        for line in proc.stdout:
+            log += line
+            yield log
+        proc.wait()
+        yield log + f"\n[Thoát với mã: {proc.returncode}]"
 
 
 # ---------------- Train ----------------
 
 def train_ui(dataset, model, data_size, resume):
+    """Chạy train_qlora.py với tham số từ UI, log realtime; xong thì xóa cache OCR."""
     _free_gpu()
     cmd = [sys.executable, str(SCRIPT / "train_qlora.py")]
     if dataset:
@@ -108,6 +110,7 @@ def _resolve_ocr(config, adapter, model):
 
 
 def ocr_ui(image, adapter, model):
+    """OCR 1 ảnh PIL từ UI."""
     if image is None:
         return "Chưa có ảnh. Hãy upload 1 ảnh chữ viết tay."
     config = Configs()
@@ -140,6 +143,7 @@ def ocr_file_ui(file_path, adapter, model):
 # ---------------- Eval ----------------
 
 def eval_ui(num_test, adapter, model):
+    """Chạy eval_ocr.py, log realtime."""
     _free_gpu()
     cmd = [sys.executable, str(SCRIPT / "eval_ocr.py"), "--num-test", str(int(num_test))]
     if adapter and adapter.strip():
@@ -152,6 +156,7 @@ def eval_ui(num_test, adapter, model):
 # ---------------- Export ----------------
 
 def export_ui(adapter, model):
+    """Chạy export_merged.py, log realtime."""
     _free_gpu()
     cmd = [sys.executable, str(SCRIPT / "export_merged.py")]
     if adapter and adapter.strip():
@@ -281,10 +286,14 @@ def push_adapter_ui(hub_repo, adapter):
 
 
 def _fmt_size(n):
-    for unit in ("B", "KB", "MB", "GB"):
-        if n < 1024 or unit == "GB":
-            return f"{n:.1f} {unit}"
+    """Định dạng bytes thành chuỗi đọc được."""
+    unit = "B"
+    for u in ("KB", "MB", "GB"):
+        if n < 1024:
+            break
         n /= 1024
+        unit = u
+    return f"{n:.1f} {unit}"
 
 
 def _dir_size(p):
@@ -335,6 +344,7 @@ def _token_path():
 
 
 def token_status():
+    """Chuỗi trạng thái token HF (che bớt giữa)."""
     path = _token_path()
     if path.exists():
         m = re.search(r"HF_TOKEN\s*=\s*(\S+)", path.read_text(encoding="utf-8"))
@@ -364,6 +374,7 @@ def _push_error(exc):
 
 
 def save_token(token):
+    """Lưu HF_TOKEN vào .env.dev, trả (message, status mới)."""
     tok = (token or "").strip()
     if not tok:
         return "Token rỗng — chưa lưu.", token_status()
@@ -377,13 +388,16 @@ def save_token(token):
 # ---------------- App ----------------
 
 def build_app():
+    """Dựng giao diện Gradio 5 tab."""
     cfg = Configs()
     with gr.Blocks(title="Vi-OCR-Handwritten UI") as demo:
         gr.Markdown(
             "# 🚀 Vi-OCR-Handwritten — QLoRA fine-tune Qwen2.5-VL\n"
             "Fine-tune / OCR / Eval / Export. Log hiển thị realtime.\n"
             "☁️ Dùng ké GPU Colab: "
-            "[mở notebook Colab](https://colab.research.google.com/notebook#fileId=https%3A//huggingface.co/Qwen/Qwen2.5-VL-7B-Instruct.ipynb)"
+            "[mở notebook Colab]"
+            "(https://colab.research.google.com/notebook"
+            "#fileId=https%3A//huggingface.co/Qwen/Qwen2.5-VL-7B-Instruct.ipynb)"
         )
 
         with gr.Tab("Fine-tune"):
@@ -413,7 +427,8 @@ def build_app():
                 label="Tiếp tục từ checkpoint (tick khi chạy lại sau đứt giữa chừng)",
             )
             gr.Markdown(
-                "🔗 Dataset: [5CD-AI/Viet-Handwriting-OCR-v2](https://huggingface.co/datasets/5CD-AI/Viet-Handwriting-OCR-v2) | "
+                "🔗 Dataset: "
+                "[5CD-AI/Viet-Handwriting-OCR-v2](https://huggingface.co/datasets/5CD-AI/Viet-Handwriting-OCR-v2) | "
                 "Models: [Qwen2.5-VL-7B-Instruct](https://huggingface.co/Qwen/Qwen2.5-VL-7B-Instruct) · "
                 "[Qwen2.5-VL-3B-Instruct](https://huggingface.co/Qwen/Qwen2.5-VL-3B-Instruct)"
             )

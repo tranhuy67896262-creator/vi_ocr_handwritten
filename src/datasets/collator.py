@@ -1,3 +1,6 @@
+"""Collator Qwen2.5-VL: chỉ tính loss trên phần assistant."""
+
+
 class DataCollatorForQwenVL:
     """Collator cho Qwen2.5-VL: tokenize chat template + chỉ tính loss trên phần assistant.
 

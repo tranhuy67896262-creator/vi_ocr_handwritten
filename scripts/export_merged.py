@@ -1,3 +1,4 @@
+"""Merge LoRA adapter vào base model."""
 import argparse
 import sys
 from pathlib import Path
@@ -15,6 +16,7 @@ from src.utils.logging import log_and_exit, setup_file_logging
 
 
 def main():
+    """Parse CLI và chạy merge."""
     parser = argparse.ArgumentParser(
         description="Merge LoRA adapter vào base model và export full model (chạy độc lập được)"
     )
@@ -58,7 +60,8 @@ def main():
         print(f"Da export full model vao: {out}")
     except Exception as exc:
         log_and_exit(exc, stage="EXPORT",
-                     extra_hint="VRAM thap: merged model can ~2x VRAM cua model (bf16). Export tren GPU >=16GB (3B) hoac 32GB (7B).")
+                     extra_hint="VRAM thap: merged model can ~2x VRAM cua model (bf16). "
+                     "Export tren GPU >=16GB (3B) hoac 32GB (7B).")
 
 
 if __name__ == "__main__":

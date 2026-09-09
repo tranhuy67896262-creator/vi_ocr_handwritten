@@ -1,3 +1,4 @@
+"""Load + format dataset chữ viết tay thành chat template Qwen."""
 from datasets import load_dataset
 
 from src.utils.image import standardize_a4

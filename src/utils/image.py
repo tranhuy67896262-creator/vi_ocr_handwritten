@@ -1,3 +1,4 @@
+"""Chuẩn hóa ảnh A4 + chẻ lát cho OCR."""
 import math
 
 from PIL import Image

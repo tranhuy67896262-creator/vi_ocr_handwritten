@@ -1,3 +1,4 @@
+"""Inference OCR: ảnh lẻ, PDF nhiều trang, Word .docx."""
 from pathlib import Path
 
 import torch

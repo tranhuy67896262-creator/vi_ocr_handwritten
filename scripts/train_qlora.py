@@ -1,3 +1,4 @@
+"""Fine-tune QLoRA Qwen2.5-VL cho chữ viết tay tiếng Việt."""
 import argparse
 import os
 import sys
@@ -16,6 +17,7 @@ from src.utils.logging import log_and_exit, setup_file_logging
 
 
 def main():
+    """Parse CLI và chạy train."""
     parser = argparse.ArgumentParser(
         description="Fine-tune Qwen2.5-VL-3B bằng LoRA/QLoRA trên chữ viết tay Việt"
     )
@@ -36,7 +38,8 @@ def main():
     parser.add_argument("--no-kl", action="store_true",
                         help="Tắt KL-regularization (chống mất kiến thức) để tiết kiệm VRAM")
     parser.add_argument("--push", action="store_true", help="Push adapter lên Hugging Face Hub")
-    parser.add_argument("--hub-repo", type=str, default=None, help="Tên repo Hub đích khi push, vd: owner/qwen25vl-3b-vi-hwr-lora")
+    parser.add_argument("--hub-repo", type=str, default=None, help=(
+        "Tên repo Hub đích khi push, vd: owner/qwen25vl-3b-vi-hwr-lora"))
     args = parser.parse_args()
 
     config = Configs()
