@@ -94,19 +94,27 @@ def render_pdf_pages(pdf_path, dpi=200):
     return pages
 
 
-def _ocr_image_list(config, model, processor, images, label):
-    """OCR từng ảnh trong list rồi gộp text (dùng chung cho PDF/DOCX)."""
-    parts = []
-    for i, img in enumerate(images):
-        txt = predict_image(config, model, processor, img)
-        parts.append(f"--- {label} {i + 1}/{len(images)} ---\n{txt}")
-    return "\n\n".join(parts)
+def _ocr_tiled(config, model, processor, img, tiles=None):
+    """OCR 1 ảnh trang scan: chẻ lát TRƯỚC khi thu nhỏ để giữ chi tiết chữ nhỏ.
+
+    Ảnh lớn (cạnh dài > 1200px, vd A4 scan 200dpi) chẻ thành `tiles` dải ngang
+    chồng nhau, mỗi dải chuẩn hóa + OCR riêng rồi gộp. Ảnh nhỏ OCR 1 phát.
+    """
+    from src.utils.image import split_strips
+    n = tiles or config.PAGE_TILES
+    strips = split_strips(img, n) if max(img.size) > 1200 else [img]
+    texts = [predict_image(config, model, processor, s) for s in strips]
+    return "\n".join(texts)
 
 
-def ocr_pdf(config, model, processor, pdf_path, dpi=None):
-    """OCR file PDF scan nhiều trang: OCR từng trang rồi gộp text theo trang."""
+def ocr_pdf(config, model, processor, pdf_path, dpi=None, tiles=None):
+    """OCR file PDF scan nhiều trang: OCR từng trang (có chẻ lát) rồi gộp."""
     pages = render_pdf_pages(pdf_path, dpi=dpi or config.PDF_DPI)
-    return _ocr_image_list(config, model, processor, pages, "Trang")
+    parts = []
+    for i, img in enumerate(pages):
+        txt = _ocr_tiled(config, model, processor, img, tiles=tiles)
+        parts.append(f"--- Trang {i + 1}/{len(pages)} ---\n{txt}")
+    return "\n\n".join(parts)
 
 
 def extract_docx_images(docx_path):
@@ -157,9 +165,13 @@ def extract_docx_images(docx_path):
     return images
 
 
-def ocr_docx(config, model, processor, docx_path):
-    """OCR file Word (.docx): OCR từng ảnh nhúng rồi gộp text theo thứ tự."""
+def ocr_docx(config, model, processor, docx_path, tiles=None):
+    """OCR file Word (.docx): OCR từng ảnh nhúng (có chẻ lát) rồi gộp theo thứ tự."""
     images = extract_docx_images(docx_path)
     if not images:
         return "File Word không chứa ảnh nào để OCR."
-    return _ocr_image_list(config, model, processor, images, "Ảnh")
+    parts = []
+    for i, img in enumerate(images):
+        txt = _ocr_tiled(config, model, processor, img, tiles=tiles)
+        parts.append(f"--- Ảnh {i + 1}/{len(images)} ---\n{txt}")
+    return "\n\n".join(parts)

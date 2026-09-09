@@ -93,6 +93,9 @@ class Configs:
     # Inference
     MAX_NEW_TOKENS = 256
     PDF_DPI = 200  # DPI render trang PDF scan (khớp file scan thực tế ~200dpi)
+    # Số lát cắt mỗi trang A4 scan (PDF/DOCX): chẻ TRƯỚC khi thu nhỏ để mỗi lát
+    # giữ chi tiết chữ nhỏ. Chỉ áp dụng khi ảnh lớn (cạnh dài > 1200px).
+    PAGE_TILES = 2
     ATTN_IMPLEMENTATION = "auto"  # auto: flash_attention_2 nếu có (Linux/GPU lớn), nếu không sdpa
 
     def __init__(self):
