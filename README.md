@@ -23,9 +23,13 @@
 
 ---
 
-# Pipeline Fine-tune Qwen2.5-VL-3B (chữ viết tay Việt)
+# Pipeline Fine-tune Qwen2.5-VL (chữ viết tay Việt)
 
-Cách **thêm kiến thức mới mà không làm mất kiến thức gốc**: base model đóng băng hoàn toàn, chỉ train LoRA adapter rank thấp với lr nhỏ (`1e-5 → 2e-5`), 1-2 epoch, cosine schedule + KL-regularization. Kết quả là một adapter nhỏ (~vài trăm MB) lưu trong `models/qwen25vl-3b-vi-hwr-lora/`, không đụng tới weight gốc. Mặc định train **3B** (vừa T4 Colab); đổi sang 7B bằng `--model` hoặc dropdown trên UI.
+Cách **thêm kiến thức mới mà không làm mất kiến thức gốc**: base model đóng băng hoàn toàn, chỉ train LoRA adapter rank thấp với lr nhỏ (`1e-5 → 2e-5`), 1-2 epoch, cosine schedule + KL-regularization. Adapter được lưu riêng, không đụng tới weight gốc.
+
+- **3B:** phù hợp GPU Colab khoảng 15GB, nên bắt đầu với batch `1`.
+- **7B:** nên chạy QLoRA trên A100 40GB trở lên hoặc H100, bắt đầu với batch `2`.
+- Model mặc định trong config là 3B; truyền `--model` để đổi model.
 
 ## Cấu trúc
 
@@ -44,6 +48,9 @@ scripts/export_merged.py  # merge LoRA vào base
 scripts/export_gguf.sh    # convert GGUF (Linux/Colab)
 scripts/ui.py             # UI Gradio 5 tab (Fine-tune/OCR/Eval/Export/Settings)
 run_train.sh / run_train.bat  # wrapper setup + chạy (Linux / Windows)
+pipeline_smoke_10.sh      # train 10 ảnh + export + import/test Ollama
+pipeline_train_20k.sh     # train 20k, chỉ chạy sau smoke test thành công
+import_models_to_ollama.sh # import các GGUF đã export vào Ollama
 ```
 
 ## Cài đặt
@@ -52,7 +59,7 @@ run_train.sh / run_train.bat  # wrapper setup + chạy (Linux / Windows)
 pip install -r requirements.txt
 ```
 
-> **Windows:** train thật nên chạy trong **WSL2** (hoặc GPU cloud như Colab) vì `bitsandbytes` + CUDA trên Windows hay lỗi vặt. Nhớ set `HF_TOKEN` trong `.env.dev`. VRAM: 3B khoảng ~8GB+ (T4 15GB ổn); 7B cần 16GB+.
+> **Windows:** train thật nên chạy trong **WSL2** (hoặc GPU cloud như Colab) vì `bitsandbytes` + CUDA trên Windows hay lỗi vặt. Nhớ set `HF_TOKEN` trong `.env.dev`. QLoRA 4-bit: 3B phù hợp GPU 15GB; 7B nên dùng A100/H100. Nếu `bitsandbytes` lỗi, code fallback sang full-precision và có thể OOM.
 
 ## Chạy nhanh nhất: UI Gradio (mặc định)
 
@@ -66,20 +73,34 @@ Mặc định wrapper chỉ cài tối thiểu (`gradio`, `python-dotenv`, `pymu
 Muốn train ngay từ lệnh (không qua UI): thêm cờ `--train`:
 
 ```bash
-./run_train.sh --train --max-samples 100   # smoke test 100 ảnh
-./run_train.sh --train                     # train đầy đủ
-./run_train.sh --train --eval              # train xong eval 100 mẫu
+./run_train.sh --train --max-samples 100   # smoke test nhanh
+./run_train.sh --train                     # train theo toàn bộ dataset
 ```
 
-**Trên Colab (khuyến nghị cho 3B):**
+**Trên Colab với 3B và GPU 15GB:**
 1. Upload toàn bộ project vào Colab (kéo-thả vào `/content/`).
 2. Mở terminal (hoặc 1 cell) — truyền token luôn, script tự tạo `.env.dev`:
 ```bash
-!chmod +x run_train.sh && ./run_train.sh hf_xxxxx --train --max-samples 100
+!chmod +x run_train.sh && ./run_train.sh hf_xxxxx --train --model Qwen/Qwen2.5-VL-3B-Instruct --batch-size 1 --max-samples 100
 ```
 Hoặc bỏ qua token nếu đã upload sẵn `.env.dev` / dán token ở tab Settings. Lấy token tại https://huggingface.co/settings/tokens.
 
 Script tự cài dependencies + kiểm tra GPU + đọc `HF_TOKEN` từ `.env.dev`. Mọi flag train truyền thẳng qua được: `./run_train.sh --train --epochs 2 --lr 1e-5`.
+
+**Pipeline kiểm tra đầy đủ cho 7B:** các script ở thư mục gốc được thiết kế cho `Qwen/Qwen2.5-VL-7B-Instruct` và sẽ dừng nếu thiếu adapter, GGUF, `mmproj`, Ollama hoặc output OCR.
+
+```bash
+# A100 40GB: bắt đầu batch 2, có thể tăng lên 4 nếu còn VRAM
+BATCH_SIZE=2 bash pipeline_smoke_10.sh
+
+# Chỉ chạy sau khi smoke test tạo marker thành công
+BATCH_SIZE=2 bash pipeline_train_20k.sh
+
+# Import lại các model GGUF đã tạo (smoke và 20k nếu tồn tại)
+bash import_models_to_ollama.sh
+```
+
+Smoke pipeline thực hiện: train 10 ảnh → OCR bằng adapter HF → merge model → convert GGUF + `mmproj` → import Ollama → chạy OCR ảnh test. Pipeline 20k chỉ chạy khi smoke test thành công.
 
 ## Chạy chi tiết (terminal)
 
@@ -107,8 +128,10 @@ python scripts/eval_ocr.py --image path/to/anh.jpg --adapter <owner>/qwen25vl-3b
 
 # Đánh giá CER/WER trên test split
 python scripts/eval_ocr.py --num-test 200
+python scripts/eval_ocr.py --model Qwen/Qwen2.5-VL-7B-Instruct \
+  --adapter models/qwen25vl-7b-vi-hwr-lora --num-test 200
 
-# Export full model (merge LoRA vào base, chạy độc lập) — 3B cần ~8GB+ RAM/VRAM
+# Export full model (merge LoRA vào base, chạy độc lập)
 python scripts/export_merged.py
 #   --adapter <path-or-repo-id>   --model <base>   --output <dir>
 
@@ -139,14 +162,14 @@ python scripts/train_qlora.py --push --hub-repo <owner>/qwen25vl-3b-vi-hwr-lora
 ```
 
 ```bash
-# A100 40GB: batch lớn hơn + model 7B
-./run_train.sh --train --model Qwen/Qwen2.5-VL-7B-Instruct --batch-size 4 --max-samples 100
+# A100 40GB: bắt đầu batch 2, thử batch 4 nếu còn VRAM
+./run_train.sh --train --model Qwen/Qwen2.5-VL-7B-Instruct --batch-size 2 --max-samples 100
 
-# H100: tương tự, có thể thử --batch-size 8
-./run_train.sh --train --model Qwen/Qwen2.5-VL-7B-Instruct --batch-size 8 --max-samples 100
+# H100 80GB: bắt đầu batch 4, có thể thử batch 8
+./run_train.sh --train --model Qwen/Qwen2.5-VL-7B-Instruct --batch-size 4 --max-samples 100
 ```
 
-`ATTN_IMPLEMENTATION="auto"` trong config (flash_attention_2 nếu import được, sdpa nếu không) nên không cần sửa code. Batch size cứ tăng dần tới khi gần đầy VRAM rồi lùi 1 nấc.
+`ATTN_IMPLEMENTATION="auto"` trong config (flash_attention_2 nếu import được, sdpa nếu không) nên không cần sửa code. Batch size cứ tăng dần tới khi gần đầy VRAM rồi lùi 1 nấc. `gradient_accumulation_steps=8`, nên batch 2 có effective batch 16 và batch 4 có effective batch 32.
 
 ## Ghi chú quan trọng
 
