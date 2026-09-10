@@ -91,10 +91,10 @@ Script tự cài dependencies + kiểm tra GPU + đọc `HF_TOKEN` từ `.env.de
 
 ```bash
 # A100 40GB: bắt đầu batch 2, có thể tăng lên 4 nếu còn VRAM
-BATCH_SIZE=2 bash pipeline_smoke_10.sh
+BATCH_SIZE=2 bash pipeline_smoke_10.sh hf_xxxxx
 
 # Chỉ chạy sau khi smoke test tạo marker thành công
-BATCH_SIZE=2 bash pipeline_train_20k.sh
+BATCH_SIZE=2 bash pipeline_train_20k.sh hf_xxxxx
 
 # Import lại các model GGUF đã tạo (smoke và 20k nếu tồn tại)
 bash import_models_to_ollama.sh

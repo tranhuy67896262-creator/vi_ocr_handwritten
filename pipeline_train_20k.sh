@@ -7,6 +7,23 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$ROOT"
 
+HF_TOKEN_ARG=()
+if [[ $# -gt 0 && "${1:0:2}" != "--" ]]; then
+    HF_TOKEN_ARG=("$1")
+    shift
+fi
+if [[ $# -gt 0 ]]; then
+    echo "[ERR] Tham so khong hop le: $1"
+    echo "Dung: bash pipeline_train_20k.sh [HF_TOKEN]"
+    exit 1
+fi
+if [[ ${#HF_TOKEN_ARG[@]} -eq 0 && -z "${HF_TOKEN:-}" ]] && ! grep -q '^HF_TOKEN' .env.dev 2>/dev/null; then
+    echo "[ERR] Thieu HF_TOKEN cho gated dataset."
+    echo "Dung: bash pipeline_train_20k.sh hf_xxxxx"
+    echo "Hoac export HF_TOKEN / tao .env.dev truoc khi chay."
+    exit 1
+fi
+
 MODEL_NAME="${MODEL_NAME:-Qwen/Qwen2.5-VL-7B-Instruct}"
 BATCH_SIZE="${BATCH_SIZE:-4}"
 TEST_IMAGE="${TEST_IMAGE:-assets/vi-handwriting-sample-1.png}"
@@ -63,9 +80,9 @@ if ! "$PYTHON" -c "import torch, transformers, peft" >/dev/null 2>&1; then
 fi
 
 echo "=== 1/5 Train toi da 20.000 anh ==="
-bash run_train.sh --train \
+bash run_train.sh "${HF_TOKEN_ARG[@]}" --train \
     --model "$MODEL_NAME" \
-    --max-samples 20000 \
+    --max-samples 2000 \
     --batch-size "$BATCH_SIZE" \
     --epochs 1 \
     --save-steps 100
