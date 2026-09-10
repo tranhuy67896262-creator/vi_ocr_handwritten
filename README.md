@@ -49,7 +49,7 @@ scripts/export_gguf.sh    # convert GGUF (Linux/Colab)
 scripts/ui.py             # UI Gradio 5 tab (Fine-tune/OCR/Eval/Export/Settings)
 run_train.sh / run_train.bat  # wrapper setup + chạy (Linux / Windows)
 pipeline_smoke_10.sh      # train 10 ảnh + export + import/test Ollama
-pipeline_train_20k.sh     # train 20k, chỉ chạy sau smoke test thành công
+pipeline_train_20k.sh     # train tối đa 5k mặc định, chỉ chạy sau smoke test thành công
 import_models_to_ollama.sh # import các GGUF đã export vào Ollama
 ```
 

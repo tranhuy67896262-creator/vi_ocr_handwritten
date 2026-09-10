@@ -28,7 +28,8 @@ MODEL_NAME="${MODEL_NAME:-Qwen/Qwen2.5-VL-7B-Instruct}"
 DATASET_NAME="${DATASET_NAME:-}"
 BATCH_SIZE="${BATCH_SIZE:-8}"
 GRADIENT_ACCUMULATION_STEPS="${GRADIENT_ACCUMULATION_STEPS:-4}"
-MAX_SAMPLES="${MAX_SAMPLES:-20000}"
+MAX_SAMPLES="${MAX_SAMPLES:-5000}"
+EVAL_SAMPLES="${EVAL_SAMPLES:-200}"
 TEST_IMAGE="${TEST_IMAGE:-assets/vi-handwriting-sample-1.png}"
 OLLAMA_MODEL="${OLLAMA_MODEL:-qwen25vl-7b-vi-hwr-20k}"
 LLAMA_CPP_DIR="${LLAMA_CPP_DIR:-/content/llama.cpp}"
@@ -101,7 +102,7 @@ if [[ ! -f "$ADAPTER_DIR/adapter_config.json" ]]; then
     exit 1
 fi
 
-echo "=== 2/5 Eval 200 mau test bang adapter ==="
+echo "=== 2/5 Eval $EVAL_SAMPLES mau test bang adapter ==="
 EVAL_DATASET_ARG=()
 if [[ -n "$DATASET_NAME" ]]; then
     EVAL_DATASET_ARG=(--dataset "$DATASET_NAME")
@@ -110,7 +111,7 @@ fi
     --model "$MODEL_NAME" \
     --adapter "$ADAPTER_DIR" \
     "${EVAL_DATASET_ARG[@]}" \
-    --num-test 200
+    --num-test "$EVAL_SAMPLES"
 
 echo "=== 3/5 Merge LoRA vao model ==="
 "$PYTHON" scripts/export_merged.py \
@@ -184,5 +185,5 @@ fi
 printf '%s\n' "$OLLAMA_OUTPUT"
 
 printf 'model=%s\nimage=%s\n' "$MODEL_NAME" "$TEST_IMAGE" > "$MARKER"
-echo "OK: pipeline 20k + export + Ollama vision thanh cong."
+echo "OK: pipeline train $MAX_SAMPLES anh + export + Ollama vision thanh cong."
 echo "Marker: $MARKER"
