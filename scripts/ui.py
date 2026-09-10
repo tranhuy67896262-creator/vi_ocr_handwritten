@@ -168,12 +168,12 @@ def export_ui(adapter, model):
 
 
 def _latest_gguf():
-    """File .gguf mới nhất (ưu tiên bản Q4_K_M), hoặc None nếu chưa có."""
+    """File .gguf mới nhất (ưu tiên bản Q6_K), hoặc None nếu chưa có."""
     files = sorted((PROJECT_ROOT / "models" / "gguf").glob("*.gguf"))
     if not files:
         return None
-    q4 = [f for f in files if "Q4_K_M" in f.name]
-    pick = q4[-1] if q4 else files[-1]
+    q6 = [f for f in files if "Q6_K" in f.name]
+    pick = q6[-1] if q6 else files[-1]
     return str(pick)
 
 
@@ -250,7 +250,7 @@ def _default_ollama_name():
     if not gguf:
         return "qwen25vl-3b-vi-hwr"
     stem = Path(gguf).stem
-    for suf in ("-Q4_K_M", "-Q4_0", "-Q8_0", "-f16"):
+    for suf in ("-Q6_K", "-Q4_K_M", "-Q4_0", "-Q8_0", "-f16"):
         if stem.endswith(suf):
             stem = stem[: -len(suf)]
             break

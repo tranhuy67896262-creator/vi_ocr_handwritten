@@ -5,17 +5,17 @@ cd "$(dirname "$0")/.."
 # Export GGUF từ merged HF model (gom ca text model + mmproj vision).
 # Bước 1: python scripts/export_merged.py        (cần trước)
 # Bước 2: ./scripts/export_gguf.sh                (convert + quantize + mmproj + Modelfile)
-# Output trong OUT_DIR: *-f16.gguf, *-Q4_K_M.gguf, mmproj-*.gguf, Modelfile (FROM + ADAPTER + SYSTEM OCR).
+# Output trong OUT_DIR: *-f16.gguf, *-Q6_K.gguf, mmproj-*.gguf, Modelfile (FROM + ADAPTER + SYSTEM OCR).
 #
 # Biến môi trường tuỳ chọn:
 #   LLAMA_CPP_DIR  thư mục llama.cpp (mặc định /content/llama.cpp)
-#   QUANT          loại quantize (mặc định Q4_K_M; để "none" bỏ qua)
+#   QUANT          loại quantize (mặc định Q6_K; để "none" bỏ qua)
 #   LLAMA_CUBLAS   "ON" để build bản GPU (mặc định CPU — đủ cho convert/quantize)
 
 MERGE_DIR="${1:-models/qwen25vl-3b-vi-hwr-lora-merged}"
 OUT_DIR="${2:-models/gguf}"
 LLAMA_CPP="${LLAMA_CPP_DIR:-/content/llama.cpp}"
-QUANT="${QUANT:-Q4_K_M}"
+QUANT="${QUANT:-Q6_K}"
 TAG=$(basename "$MERGE_DIR" | sed 's/-merged//')
 
 if [ ! -d "$MERGE_DIR" ]; then
