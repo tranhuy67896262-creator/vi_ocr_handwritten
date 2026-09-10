@@ -26,6 +26,8 @@ def main():
                         help="Base model (mặc định: từ config) — phải cùng họ với adapter")
     parser.add_argument("--adapter", type=str, default=None,
                         help="Thư mục LoRA adapter hoặc repo id trên Hub (vd owner/repo); mặc định: từ config")
+    parser.add_argument("--dataset", type=str, default=None,
+                        help="Tên dataset HF để đánh giá (mặc định: từ config)")
     parser.add_argument("--num-test", type=int, default=100, help="Số mẫu đánh giá trên test split")
     args = parser.parse_args()
 
@@ -34,6 +36,8 @@ def main():
     if args.model:
         config.MODEL_NAME = args.model
         config.ADAPTER_DIR = config.MODELS_DIR / f"qwen25vl-{_adapter_tag(args.model)}-vi-hwr-lora"
+    if args.dataset:
+        config.DATASET_NAME = args.dataset
     adapter_dir = args.adapter or str(config.ADAPTER_DIR)
 
     try:

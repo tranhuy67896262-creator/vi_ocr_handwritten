@@ -65,6 +65,8 @@ class Configs:
     WARMUP_RATIO = 0.03
     MAX_SEQ_LEN = 1024
     GRADIENT_CHECKPOINTING = True
+    # Colab/Linux: nạp ảnh và chạy processor song song, giảm thời gian GPU chờ batch.
+    DATALOADER_NUM_WORKERS = 4
     LOGGING_STEPS = 50
     SAVE_STEPS = 500
     EVAL_STEPS = 250

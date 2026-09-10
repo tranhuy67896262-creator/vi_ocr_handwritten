@@ -26,6 +26,8 @@ def main():
     parser.add_argument("--epochs", type=int, default=None)
     parser.add_argument("--lr", type=float, default=None)
     parser.add_argument("--batch-size", type=int, default=None)
+    parser.add_argument("--gradient-accumulation-steps", type=int, default=None,
+                        help="Số bước tích lũy gradient trước mỗi lần cập nhật")
     parser.add_argument("--max-seq-len", type=int, default=None,
                         help="Giới hạn token/text mỗi mẫu (giảm để tiết kiệm VRAM)")
     parser.add_argument("--lora-r", type=int, default=None)
@@ -58,6 +60,8 @@ def main():
         config.LEARNING_RATE = args.lr
     if args.batch_size is not None:
         config.BATCH_SIZE = args.batch_size
+    if args.gradient_accumulation_steps is not None:
+        config.GRADIENT_ACCUMULATION_STEPS = args.gradient_accumulation_steps
     if args.max_seq_len is not None:
         config.MAX_SEQ_LEN = args.max_seq_len
     if args.lora_r is not None:

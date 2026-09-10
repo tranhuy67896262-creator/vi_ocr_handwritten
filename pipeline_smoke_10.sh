@@ -25,7 +25,9 @@ if [[ ${#HF_TOKEN_ARG[@]} -eq 0 && -z "${HF_TOKEN:-}" ]] && ! grep -q '^HF_TOKEN
 fi
 
 MODEL_NAME="${MODEL_NAME:-Qwen/Qwen2.5-VL-7B-Instruct}"
-BATCH_SIZE="${BATCH_SIZE:-4}"
+DATASET_NAME="${DATASET_NAME:-}"
+BATCH_SIZE="${BATCH_SIZE:-8}"
+GRADIENT_ACCUMULATION_STEPS="${GRADIENT_ACCUMULATION_STEPS:-4}"
 TEST_IMAGE="${TEST_IMAGE:-assets/vi-handwriting-sample-1.png}"
 OLLAMA_MODEL="${OLLAMA_MODEL:-qwen25vl-7b-vi-hwr-smoke}"
 LLAMA_CPP_DIR="${LLAMA_CPP_DIR:-/content/llama.cpp}"
@@ -70,10 +72,16 @@ if ! "$PYTHON" -c "import torch, transformers, peft" >/dev/null 2>&1; then
 fi
 
 echo "=== 1/5 Train 10 anh ==="
+TRAIN_DATASET_ARG=()
+if [[ -n "$DATASET_NAME" ]]; then
+    TRAIN_DATASET_ARG=(--dataset "$DATASET_NAME")
+fi
 bash run_train.sh "${HF_TOKEN_ARG[@]}" --train \
     --model "$MODEL_NAME" \
+    "${TRAIN_DATASET_ARG[@]}" \
     --max-samples 10 \
     --batch-size "$BATCH_SIZE" \
+    --gradient-accumulation-steps "$GRADIENT_ACCUMULATION_STEPS" \
     --epochs 1 \
     --save-steps 5
 
@@ -83,9 +91,14 @@ if [[ ! -f "$ADAPTER_DIR/adapter_config.json" ]]; then
 fi
 
 echo "=== 2/5 Test adapter bang pipeline HF ==="
+EVAL_DATASET_ARG=()
+if [[ -n "$DATASET_NAME" ]]; then
+    EVAL_DATASET_ARG=(--dataset "$DATASET_NAME")
+fi
 "$PYTHON" scripts/eval_ocr.py \
     --model "$MODEL_NAME" \
     --adapter "$ADAPTER_DIR" \
+    "${EVAL_DATASET_ARG[@]}" \
     --image "$TEST_IMAGE"
 
 echo "=== 3/5 Merge LoRA vao model ==="
