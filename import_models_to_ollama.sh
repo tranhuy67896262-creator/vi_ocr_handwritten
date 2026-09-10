@@ -9,8 +9,11 @@ cd "$ROOT"
 
 SMOKE_DIR="${SMOKE_DIR:-models/gguf-smoke}"
 FULL_DIR="${FULL_DIR:-models/gguf-20k}"
+SMOKE_MERGED_DIR="${SMOKE_MERGED_DIR:-models/qwen25vl-7b-vi-hwr-lora-smoke-merged}"
+FULL_MERGED_DIR="${FULL_MERGED_DIR:-models/qwen25vl-7b-vi-hwr-lora-50k-merged}"
 SMOKE_NAME="${SMOKE_NAME:-qwen25vl-7b-vi-hwr-smoke}"
 FULL_NAME="${FULL_NAME:-qwen25vl-7b-vi-hwr-20k}"
+QUANT="${QUANT:-Q6_K}"
 
 if [[ -z "$SMOKE_NAME" || -z "$FULL_NAME" ]]; then
     echo "[ERR] Ten model Ollama khong duoc rong."
@@ -22,6 +25,10 @@ for model_name in "$SMOKE_NAME" "$FULL_NAME"; do
         exit 1
     fi
 done
+if [[ "$QUANT" != "Q6_K" ]]; then
+    echo "[ERR] Script nay chi import ban Q6_K, QUANT hien tai: $QUANT"
+    exit 1
+fi
 if [[ ! -f "scripts/ollama_create.sh" ]]; then
     echo "[ERR] Thieu scripts/ollama_create.sh"
     exit 1
@@ -52,30 +59,49 @@ fi
 import_one() {
     local model_name="$1"
     local gguf_dir="$2"
+    local merged_dir="$3"
 
     if [[ ! -d "$gguf_dir" ]]; then
-        echo "[WARN] Bo qua model chua ton tai: $gguf_dir"
-        return 0
+        if [[ ! -d "$merged_dir" ]]; then
+            echo "[WARN] Bo qua model chua co GGUF/merged: $model_name"
+            return 0
+        fi
+        mkdir -p "$gguf_dir"
     fi
-    if [[ ! -s "$gguf_dir/Modelfile" ]]; then
-        echo "[ERR] Thieu $gguf_dir/Modelfile"
-        echo "  Hay chay pipeline fine-tune va export truoc."
-        exit 1
+
+    shopt -s nullglob
+    local q6_files=("$gguf_dir"/*-Q6_K.gguf)
+    shopt -u nullglob
+    if [[ ${#q6_files[@]} -eq 0 || ! -s "${q6_files[0]}" || ! -s "$gguf_dir/Modelfile" ]] || \
+       ! grep -Fq "Q6_K.gguf" "$gguf_dir/Modelfile"; then
+        if [[ ! -d "$merged_dir" ]]; then
+            echo "[ERR] Chua co GGUF Q6_K va thieu merged model: $merged_dir"
+            echo "  Hay chay pipeline fine-tune va export truoc."
+            exit 1
+        fi
+        if [[ ! -f "scripts/export_gguf.sh" ]]; then
+            echo "[ERR] Thieu scripts/export_gguf.sh"
+            exit 1
+        fi
+        echo "=== Export lai Q6_K cho $model_name ==="
+        LLAMA_CPP_DIR="${LLAMA_CPP_DIR:-/content/llama.cpp}" \
+            QUANT="$QUANT" bash scripts/export_gguf.sh "$merged_dir" "$gguf_dir"
     fi
+
     shopt -s nullglob
     local mmproj_files=("$gguf_dir"/mmproj-*.gguf)
-    local main_gguf_files=()
-    local gguf_file
-    for gguf_file in "$gguf_dir"/*.gguf; do
-        [[ "$(basename "$gguf_file")" == mmproj-* ]] || main_gguf_files+=("$gguf_file")
-    done
+    q6_files=("$gguf_dir"/*-Q6_K.gguf)
     shopt -u nullglob
+    if [[ ${#q6_files[@]} -eq 0 || ! -s "${q6_files[0]}" ]]; then
+        echo "[ERR] Khong tao duoc GGUF Q6_K trong $gguf_dir"
+        exit 1
+    fi
     if [[ ${#mmproj_files[@]} -eq 0 || ! -s "${mmproj_files[0]}" ]]; then
         echo "[ERR] Thieu mmproj vision trong $gguf_dir"
         exit 1
     fi
-    if [[ ${#main_gguf_files[@]} -eq 0 || ! -s "${main_gguf_files[0]}" ]]; then
-        echo "[ERR] Thieu GGUF model text trong $gguf_dir"
+    if [[ ! -s "$gguf_dir/Modelfile" ]] || ! grep -Fq "Q6_K.gguf" "$gguf_dir/Modelfile"; then
+        echo "[ERR] Modelfile khong tro toi GGUF Q6_K: $gguf_dir/Modelfile"
         exit 1
     fi
 
@@ -85,11 +111,15 @@ import_one() {
         exit 1
     fi
     IMPORTED_COUNT=$((IMPORTED_COUNT + 1))
+    if [[ "$model_name" == "$FULL_NAME" ]]; then
+        FULL_IMPORTED=1
+    fi
 }
 
 IMPORTED_COUNT=0
-import_one "$SMOKE_NAME" "$SMOKE_DIR"
-import_one "$FULL_NAME" "$FULL_DIR"
+FULL_IMPORTED=0
+import_one "$SMOKE_NAME" "$SMOKE_DIR" "$SMOKE_MERGED_DIR"
+import_one "$FULL_NAME" "$FULL_DIR" "$FULL_MERGED_DIR"
 
 if [[ "$IMPORTED_COUNT" -eq 0 ]]; then
     echo "[ERR] Khong co model GGUF nao de import."
@@ -99,6 +129,11 @@ fi
 echo
 echo "Danh sach model Ollama:"
 ollama list
-echo
-echo "Test model 20k:"
-echo "  ollama run $FULL_NAME \"Doc chu trong anh\" -- /path/to/anh.jpg"
+if [[ "$FULL_IMPORTED" -eq 1 ]]; then
+    echo
+    echo "Test model 20k:"
+    echo "  ollama run $FULL_NAME \"Doc chu trong anh\" -- /path/to/anh.jpg"
+else
+    echo
+    echo "[INFO] Chua co model 20k; da import cac model hien co."
+fi
