@@ -49,6 +49,8 @@ fi
 DATASET_NAME="${DATASET_NAME:-}"
 BATCH_SIZE="${BATCH_SIZE:-8}"
 GRADIENT_ACCUMULATION_STEPS="${GRADIENT_ACCUMULATION_STEPS:-4}"
+NO_KL="${NO_KL:-0}"
+MAX_SEQ_LEN="${MAX_SEQ_LEN:-}"
 MAX_SAMPLES="${MAX_SAMPLES:-5000}"
 EVAL_SAMPLES="${EVAL_SAMPLES:-200}"
 TEST_IMAGE="${TEST_IMAGE:-assets/vi-handwriting-sample-1.png}"
@@ -131,7 +133,14 @@ if [[ "$MERGE" == "1" ]]; then
     echo "Che do MERGE: Hugging Face + assets/labels.csv ($LOCAL_COUNT mau local) -> data/combined"
 fi
 MAX_SAMPLES=$((REPO_SAMPLES + LOCAL_COUNT))
-echo "  -> train $MAX_SAMPLES mau ($REPO_SAMPLES tu repo + $LOCAL_COUNT tu assets)"
+echo "  -> train $MAX_SAMPLES mau ($REPO_SAMPLES tu repo + $LOCAL_COUNT tu assets) | batch=$BATCH_SIZE no_kl=$NO_KL"
+EXTRA_TRAIN_ARGS=()
+if [[ "$NO_KL" == "1" ]]; then
+    EXTRA_TRAIN_ARGS+=(--no-kl)
+fi
+if [[ -n "$MAX_SEQ_LEN" ]]; then
+    EXTRA_TRAIN_ARGS+=(--max-seq-len "$MAX_SEQ_LEN")
+fi
 bash run_train.sh "${HF_TOKEN_ARG[@]}" --train \
     "${MERGE_ARG[@]}" \
     --model "$MODEL_NAME" \
@@ -139,6 +148,7 @@ bash run_train.sh "${HF_TOKEN_ARG[@]}" --train \
     --max-samples "$MAX_SAMPLES" \
     --batch-size "$BATCH_SIZE" \
     --gradient-accumulation-steps "$GRADIENT_ACCUMULATION_STEPS" \
+    "${EXTRA_TRAIN_ARGS[@]}" \
     --epochs 1 \
     --save-steps 100
 

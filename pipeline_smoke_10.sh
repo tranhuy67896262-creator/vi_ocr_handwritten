@@ -47,8 +47,11 @@ if [[ -z "$MODEL_TAG" ]]; then
     exit 1
 fi
 DATASET_NAME="${DATASET_NAME:-}"
-BATCH_SIZE="${BATCH_SIZE:-8}"
+# Mac dinh batch 2 (vua GPU ~15GB nhu truoc). Neu van OOM: NO_KL=1 hoac MAX_SEQ_LEN=512.
+BATCH_SIZE="${BATCH_SIZE:-2}"
 GRADIENT_ACCUMULATION_STEPS="${GRADIENT_ACCUMULATION_STEPS:-4}"
+NO_KL="${NO_KL:-0}"
+MAX_SEQ_LEN="${MAX_SEQ_LEN:-}"
 TEST_IMAGE="${TEST_IMAGE:-assets/vi-handwriting-sample-1.png}"
 OLLAMA_MODEL="${OLLAMA_MODEL:-qwen25vl-${MODEL_TAG}-vi-hwr-smoke}"
 LLAMA_CPP_DIR="${LLAMA_CPP_DIR:-/content/llama.cpp}"
@@ -119,7 +122,14 @@ if [[ "$MERGE" == "1" ]]; then
     echo "Che do MERGE: Hugging Face + assets/labels.csv ($LOCAL_COUNT mau local) -> data/combined"
 fi
 SMOKE_MAX=$((REPO_SAMPLES + LOCAL_COUNT))
-echo "  -> train $SMOKE_MAX mau ($REPO_SAMPLES tu repo + $LOCAL_COUNT tu assets)"
+echo "  -> train $SMOKE_MAX mau ($REPO_SAMPLES tu repo + $LOCAL_COUNT tu assets) | batch=$BATCH_SIZE no_kl=$NO_KL"
+EXTRA_TRAIN_ARGS=()
+if [[ "$NO_KL" == "1" ]]; then
+    EXTRA_TRAIN_ARGS+=(--no-kl)
+fi
+if [[ -n "$MAX_SEQ_LEN" ]]; then
+    EXTRA_TRAIN_ARGS+=(--max-seq-len "$MAX_SEQ_LEN")
+fi
 bash run_train.sh "${HF_TOKEN_ARG[@]}" --train \
     "${MERGE_ARG[@]}" \
     --model "$MODEL_NAME" \
@@ -127,6 +137,7 @@ bash run_train.sh "${HF_TOKEN_ARG[@]}" --train \
     --max-samples "$SMOKE_MAX" \
     --batch-size "$BATCH_SIZE" \
     --gradient-accumulation-steps "$GRADIENT_ACCUMULATION_STEPS" \
+    "${EXTRA_TRAIN_ARGS[@]}" \
     --epochs 1 \
     --save-steps 5
 
