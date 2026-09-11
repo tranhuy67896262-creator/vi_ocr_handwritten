@@ -58,9 +58,9 @@ def _run(cmd, log="", cwd=None):
 # ---------------- Train ----------------
 
 def train_ui(dataset, model, data_size, resume):
-    """Chạy train_qlora.py với tham số từ UI, log realtime; xong thì xóa cache OCR."""
+    """Chạy scripts/train.py với tham số từ UI, log realtime; xong thì xóa cache OCR."""
     _free_gpu()
-    cmd = [sys.executable, str(SCRIPT / "train_qlora.py")]
+    cmd = [sys.executable, str(SCRIPT / "train.py")]
     if dataset:
         cmd += ["--dataset", dataset]
     if model:

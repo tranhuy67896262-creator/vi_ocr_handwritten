@@ -1,102 +1,16 @@
-"""Fine-tune QLoRA Qwen2.5-VL cho chữ viết tay tiếng Việt."""
-import argparse
-import os
+"""Entry cũ (deprecated): chuyển sang ``scripts/train.py``.
+
+Giữ lại để các lệnh/tài liệu cũ không gãy. Nên dùng ``python scripts/train.py``
+(trainer LoRA tổng quát, hỗ trợ cả 4-bit QLoRA lẫn bf16).
+"""
 import sys
 from pathlib import Path
 
-os.environ.setdefault("PYTORCH_CUDA_ALLOC_CONF", "expandable_segments:True")
-
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
-sys.path.insert(0, str(PROJECT_ROOT))
+if str(PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(PROJECT_ROOT))
 
-from configs.configs import Configs, _adapter_tag
-from src.datasets.dataset import build_train_eval_datasets
-from src.modeling.load import build_lora_model, load_model_and_processor
-from src.train.trainer import train
-from src.utils.logging import log_and_exit, setup_file_logging
-
-
-def main():
-    """Parse CLI và chạy train."""
-    parser = argparse.ArgumentParser(
-        description="Fine-tune Qwen2.5-VL-3B bằng LoRA/QLoRA trên chữ viết tay Việt"
-    )
-    parser.add_argument("--dataset", type=str, default=None, help="Tên dataset HF (mặc định: từ config)")
-    parser.add_argument("--model", type=str, default=None, help="Tên model HF (mặc định: từ config)")
-    parser.add_argument("--epochs", type=int, default=None)
-    parser.add_argument("--lr", type=float, default=None)
-    parser.add_argument("--batch-size", type=int, default=None)
-    parser.add_argument("--gradient-accumulation-steps", type=int, default=None,
-                        help="Số bước tích lũy gradient trước mỗi lần cập nhật")
-    parser.add_argument("--max-seq-len", type=int, default=None,
-                        help="Giới hạn token/text mỗi mẫu (giảm để tiết kiệm VRAM)")
-    parser.add_argument("--lora-r", type=int, default=None)
-    parser.add_argument("--lora-alpha", type=int, default=None)
-    parser.add_argument("--max-samples", type=int, default=None, help="Giới hạn mẫu để test nhanh")
-    parser.add_argument("--resume", action="store_true",
-                        help="Tiếp tục từ checkpoint mới nhất (đứt giữa chừng train tiếp, không mất công)")
-    parser.add_argument("--save-steps", type=int, default=None,
-                        help="Lưu checkpoint mỗi N steps (mặc định: từ config; run dài nên để ~100)")
-    parser.add_argument("--no-kl", action="store_true",
-                        help="Tắt KL-regularization (chống mất kiến thức) để tiết kiệm VRAM")
-    parser.add_argument("--push", action="store_true", help="Push adapter lên Hugging Face Hub")
-    parser.add_argument("--hub-repo", type=str, default=None, help=(
-        "Tên repo Hub đích khi push, vd: owner/qwen25vl-3b-vi-hwr-lora"))
-    args = parser.parse_args()
-
-    config = Configs()
-    setup_file_logging(config.MODELS_DIR / "training.log")
-    if args.dataset:
-        config.DATASET_NAME = args.dataset
-    if args.model:
-        config.MODEL_NAME = args.model
-        # ADAPTER_DIR là class attribute tính sẵn từ MODEL_NAME lúc định nghĩa —
-        # phải tính lại, không adapter 3B/7B sẽ ghi đè lẫn nhau.
-        config.ADAPTER_DIR = config.MODELS_DIR / f"qwen25vl-{_adapter_tag(args.model)}-vi-hwr-lora"
-        config.ADAPTER_DIR.mkdir(parents=True, exist_ok=True)
-    if args.epochs is not None:
-        config.NUM_EPOCHS = args.epochs
-    if args.lr is not None:
-        config.LEARNING_RATE = args.lr
-    if args.batch_size is not None:
-        config.BATCH_SIZE = args.batch_size
-    if args.gradient_accumulation_steps is not None:
-        config.GRADIENT_ACCUMULATION_STEPS = args.gradient_accumulation_steps
-    if args.max_seq_len is not None:
-        config.MAX_SEQ_LEN = args.max_seq_len
-    if args.lora_r is not None:
-        config.LORA_R = args.lora_r
-    if args.lora_alpha is not None:
-        config.LORA_ALPHA = args.lora_alpha
-    if args.no_kl:
-        config.KL_REGULARIZATION = False
-    if args.hub_repo:
-        config.HUB_ADAPTER_ID = args.hub_repo
-
-    print(f"Dataset: {config.DATASET_NAME}")
-    print(f"Model:   {config.MODEL_NAME}")
-    print(f"QLoRA R={config.LORA_R} alpha={config.LORA_ALPHA} | lr={config.LEARNING_RATE} | epochs={config.NUM_EPOCHS}")
-
-    try:
-        train_ds, eval_ds = build_train_eval_datasets(config, max_samples=args.max_samples)
-    except Exception as exc:
-        log_and_exit(
-            exc, stage="DATASET",
-            extra_hint="Kiểm tra HF_TOKEN (.env.dev) có quyền truy cập dataset; tên dataset đã tồn tại trên Hub chưa.",
-        )
-
-    try:
-        model, processor, use_4bit = load_model_and_processor(config)
-        model = build_lora_model(config, model)
-    except Exception as exc:
-        log_and_exit(exc, stage="MODEL", extra_hint="Kiểm tra kết nối mạng, HF_TOKEN, tên model.")
-
-    try:
-        train(config, model, processor, train_ds, eval_ds,
-              push=args.push or config.PUSH_TO_HUB, hub_repo_id=config.HUB_ADAPTER_ID,
-              use_4bit=use_4bit, resume=args.resume, save_steps=args.save_steps)
-    except Exception as exc:
-        log_and_exit(exc, stage="TRAIN")
+from scripts.train import main  # noqa: E402  (phải chèn sys.path trước)
 
 
 if __name__ == "__main__":

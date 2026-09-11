@@ -27,7 +27,7 @@ elif [ -z "${HF_TOKEN:-}" ] && ! grep -q "^HF_TOKEN" .env.dev 2>/dev/null; then
     echo "  (Lay token tai: https://huggingface.co/settings/tokens)"
 fi
 
-# Cờ riêng của run_train.sh (không truyền xuống train_qlora.py):
+# Cờ riêng của run_train.sh (không truyền xuống train.py):
 #   (mặc định)    : chỉ cài tối thiểu + mở UI Gradio (không train, không tải data)
 #   --train       : train thật (cài full torch-CUDA + requirements)
 #   --ui          : giống mặc định (giữ để tương thích cũ)
@@ -50,7 +50,7 @@ for arg in "$@"; do
         *)        NEW_ARGS+=("$arg"); HAS_ARGS=1 ;;
     esac
 done
-# Chi nhan so cho --eval (train_qlora.py khong co flag --eval* nao khac)
+# Chi nhan so cho --eval (train.py khong co flag --eval* nao khac)
 case "$EVAL_NUM" in
     ''|*[!0-9]*) EVAL_NUM="100" ;;
 esac
@@ -97,7 +97,7 @@ if [ -n "$DO_UI" ]; then
         uv pip install --python "$PYTHON" "torchao>=0.16" 2>/dev/null || echo "[WARN] Bo qua torchao."
     fi
     # Cai them deps cho Fine-tune trong UI (Colab da co san torch CUDA):
-    # Neu khong co bitsandbytes/peft/transformers -> train_qlora.py fallback full-precision
+    # Neu khong co bitsandbytes/peft/transformers -> train.py fallback full-precision
     # -> OOM tren GPU 14.56 GB. Can 4-bit QLoRA moi chay vua.
     if ! "$PYTHON" -c "import bitsandbytes, peft, transformers" 2>/dev/null; then
         echo "Dang cai bitsandbytes + transformers + peft (cho Fine-tune trong UI)..."
@@ -162,9 +162,9 @@ echo
 # HAS_ARGS thay cho [ ${#NEW_ARGS[@]} -gt 0 ]: mảng rỗng + set -u crash
 # trên bash cũ (< 4.4, vd macOS) với lỗi "unbound variable".
 if [ -n "$HAS_ARGS" ]; then
-    "$PYTHON" scripts/train_qlora.py "${NEW_ARGS[@]}"
+    "$PYTHON" scripts/train.py "${NEW_ARGS[@]}"
 else
-    "$PYTHON" scripts/train_qlora.py
+    "$PYTHON" scripts/train.py
 fi
 
 # Sao lưu adapter + log (tuỳ chọn) — vd: export BACKUP_DIR=/content/drive/MyDrive/vi_ocr_handwritten_models

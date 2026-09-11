@@ -42,7 +42,7 @@ src/train/trainer.py      # Trainer + lưu adapter (+ training_metadata.json)
 src/train/kl_trainer.py   # KL-regularization chống quên kiến thức gốc
 src/infer/predict.py      # inference OCR: ảnh lẻ / PDF nhiều trang / Word .docx
 src/utils/image.py        # chuẩn hóa ảnh khổ A4
-scripts/train_qlora.py    # entry point train
+scripts/train.py    # entry point train (LoRA: QLoRA 4-bit hoặc bf16)
 scripts/eval_ocr.py       # OCR file + đánh giá CER/WER
 scripts/export_merged.py  # merge LoRA vào base
 scripts/export_gguf.sh    # convert GGUF (Linux/Colab)
@@ -106,19 +106,19 @@ Smoke pipeline thực hiện: train 10 ảnh → OCR bằng adapter HF → merge
 
 ```bash
 # Train (thử nhanh với --max-samples trước khi train đủ)
-python scripts/train_qlora.py --max-samples 100
+python scripts/train.py --max-samples 100
 
 # Train đầy đủ / đổi model
-python scripts/train_qlora.py
-python scripts/train_qlora.py --model Qwen/Qwen2.5-VL-7B-Instruct
+python scripts/train.py
+python scripts/train.py --model Qwen/Qwen2.5-VL-7B-Instruct
 
 # Run dài (Colab hay đứt): lưu checkpoint dày + resume khi chạy lại
-python scripts/train_qlora.py --save-steps 100
-python scripts/train_qlora.py --resume            # tiếp tục từ checkpoint mới nhất
-python scripts/train_qlora.py --resume --save-steps 100
+python scripts/train.py --save-steps 100
+python scripts/train.py --resume            # tiếp tục từ checkpoint mới nhất
+python scripts/train.py --resume --save-steps 100
 
 # Ghi đè config nhanh từ CLI
-python scripts/train_qlora.py --epochs 2 --lr 1e-5 --lora-r 16 --lora-alpha 32
+python scripts/train.py --epochs 2 --lr 1e-5 --lora-r 16 --lora-alpha 32
 
 # OCR ảnh / PDF / Word bằng adapter (base phải cùng họ adapter)
 python scripts/eval_ocr.py --image path/to/anh.jpg
@@ -151,7 +151,7 @@ ollama push <owner>/qwen25vl-3b-vi-hwr
 #   llama-mtmd-cli -m model.gguf --mmproj mmproj.gguf --image anh.jpg -p "..." -n 256
 
 # Push adapter lên Hub (repo tự tạo nếu chưa có)
-python scripts/train_qlora.py --push --hub-repo <owner>/qwen25vl-3b-vi-hwr-lora
+python scripts/train.py --push --hub-repo <owner>/qwen25vl-3b-vi-hwr-lora
 ```
 > Dataset mặc định: source gốc gated `5CD-AI/Viet-Handwriting-OCR-v2` (phải accept điều khoản trên HF). Đổi bằng `--dataset <owner>/<repo>`.
 

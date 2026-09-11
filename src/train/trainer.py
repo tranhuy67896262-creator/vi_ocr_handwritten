@@ -11,6 +11,9 @@ from src.datasets.collator import DataCollatorForQwenVL
 from src.train.kl_trainer import KLLoRATrainer
 from src.utils.logging import setup_file_logging
 
+# Optimizer theo precision (OCP: thêm mode mới chỉ cần mở rộng mapping).
+OPTIMIZER_BY_4BIT = {True: "paged_adamw_8bit", False: "adamw_torch"}
+
 
 def get_training_args(config, output_dir, use_4bit, num_train_steps=None):
     """Dựng TrainingArguments từ config."""
@@ -29,7 +32,7 @@ def get_training_args(config, output_dir, use_4bit, num_train_steps=None):
         "save_total_limit": 2,
         "bf16": use_bf16,
         "fp16": not use_bf16,
-        "optim": "paged_adamw_8bit" if use_4bit else "adamw_torch",
+        "optim": OPTIMIZER_BY_4BIT[bool(use_4bit)],
         "gradient_checkpointing": config.GRADIENT_CHECKPOINTING,
         "dataloader_num_workers": config.DATALOADER_NUM_WORKERS,
         "dataloader_pin_memory": True,
@@ -107,7 +110,7 @@ def train(config, model, processor, train_ds, eval_ds=None, push=False, hub_repo
     processor.save_pretrained(config.ADAPTER_DIR)
     print(f"Đã lưu LoRA adapter vào: {config.ADAPTER_DIR}")
 
-    _save_training_metadata(config, train_ds, eval_ds, trainer)
+    _save_training_metadata(config, train_ds, eval_ds, trainer, use_4bit)
     _append_log_summary(config, log_path, train_ds, eval_ds, trainer)
 
     if push:
@@ -123,7 +126,7 @@ def train(config, model, processor, train_ds, eval_ds=None, push=False, hub_repo
     return config.ADAPTER_DIR
 
 
-def _save_training_metadata(config, train_ds, eval_ds, trainer):
+def _save_training_metadata(config, train_ds, eval_ds, trainer, use_4bit):
     """Ghi lại số liệu training (đã train bao nhiêu data, cấu hình gì) vào JSON."""
     train_samples = len(train_ds) if train_ds is not None else 0
     eval_samples = len(eval_ds) if eval_ds is not None else 0
@@ -145,7 +148,7 @@ def _save_training_metadata(config, train_ds, eval_ds, trainer):
         "lora_r": config.LORA_R,
         "lora_alpha": config.LORA_ALPHA,
         "lora_dropout": config.LORA_DROPOUT,
-        "use_4bit": config.USE_4BIT,
+        "use_4bit": use_4bit,
         "seed": config.SEED,
         "kl_regularization": config.KL_REGULARIZATION,
         "kl_coefficient": config.KL_COEFFICIENT,

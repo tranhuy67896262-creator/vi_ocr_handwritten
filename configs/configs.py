@@ -16,6 +16,12 @@ def _adapter_tag(model_name):
     return "model"
 
 
+def adapter_dir(models_dir, model_name, use_4bit=True):
+    """Đường dẫn adapter LoRA, tách theo precision để QLoRA và bf16 không ghi đè nhau."""
+    precision = "lora" if use_4bit else "lora-bf16"
+    return Path(models_dir) / f"qwen25vl-{_adapter_tag(model_name)}-vi-hwr-{precision}"
+
+
 class Configs:
     """Cấu hình cho project Vi-OCR-Handwritten (Qwen2.5-VL + LoRA/QLoRA)"""
 
@@ -33,9 +39,9 @@ class Configs:
     PUSH_TO_HUB = False
     HUB_ADAPTER_ID = ""  # Truyền qua CLI: --hub-repo <owner>/<repo>
 
-    # Thư mục adapter tự suy từ MODEL_NAME (vd 3B -> qwen25vl-3b-vi-hwr-lora)
-    # Đặt SAU MODEL_NAME vì class body chạy tuần tự.
-    ADAPTER_DIR = MODELS_DIR / f"qwen25vl-{_adapter_tag(MODEL_NAME)}-vi-hwr-lora"
+    # Thư mục adapter tự suy từ MODEL_NAME + precision (3B QLoRA -> qwen25vl-3b-vi-hwr-lora;
+    # bf16 -> qwen25vl-3b-vi-hwr-lora-bf16). Đặt SAU MODEL_NAME vì class body chạy tuần tự.
+    ADAPTER_DIR = adapter_dir(MODELS_DIR, MODEL_NAME, True)
 
     # Prompt hệ thống cho OCR
     SYSTEM_PROMPT = (

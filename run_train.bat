@@ -154,7 +154,7 @@ echo   Merge+train: %~nx0 --merge   (HF + assets/labels.csv)
 echo   Real train: run on Colab GPU via run_train.sh --train
 echo(
 
-"%PY%" scripts\train_qlora.py %REST%
+"%PY%" scripts\train.py %REST%
 set EXIT_CODE=%ERRORLEVEL%
 if not "%EXIT_CODE%"=="0" exit /b %EXIT_CODE%
 

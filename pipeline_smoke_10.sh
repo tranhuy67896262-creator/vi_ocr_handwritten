@@ -51,9 +51,12 @@ DATASET_NAME="${DATASET_NAME:-}"
 BATCH_SIZE="${BATCH_SIZE:-2}"
 GRADIENT_ACCUMULATION_STEPS="${GRADIENT_ACCUMULATION_STEPS:-4}"
 NO_KL="${NO_KL:-0}"
+USE_4BIT="${USE_4BIT:-1}"
+# Tach artifact qlora (lora) va bf16 (lora-bf16) de khong ghi de nhau.
+if [[ "$USE_4BIT" == "0" ]]; then ADAPTER_SUFFIX="lora-bf16"; else ADAPTER_SUFFIX="lora"; fi
 MAX_SEQ_LEN="${MAX_SEQ_LEN:-}"
 TEST_IMAGE="${TEST_IMAGE:-assets/vi-handwriting-sample-1.png}"
-OLLAMA_MODEL="${OLLAMA_MODEL:-qwen25vl-${MODEL_TAG}-vi-hwr-smoke}"
+OLLAMA_MODEL="${OLLAMA_MODEL:-qwen25vl-${MODEL_TAG}-vi-hwr-smoke-${ADAPTER_SUFFIX}}"
 LLAMA_CPP_DIR="${LLAMA_CPP_DIR:-/content/llama.cpp}"
 # Mac dinh MERGE=1: gop Hugging Face + assets/labels.csv -> data/combined roi train.
 # Dat MERGE=0 de chi train tren dataset HF (bo qua data noi bo).
@@ -64,9 +67,9 @@ else
     PYTHON="${PYTHON:-python}"
 fi
 
-ADAPTER_DIR="models/qwen25vl-${MODEL_TAG}-vi-hwr-lora"
-MERGED_DIR="models/qwen25vl-${MODEL_TAG}-vi-hwr-lora-smoke-merged"
-GGUF_DIR="models/gguf-smoke-${MODEL_TAG}"
+ADAPTER_DIR="models/qwen25vl-${MODEL_TAG}-vi-hwr-${ADAPTER_SUFFIX}"
+MERGED_DIR="models/qwen25vl-${MODEL_TAG}-vi-hwr-${ADAPTER_SUFFIX}-smoke-merged"
+GGUF_DIR="models/gguf-smoke-${MODEL_TAG}-${ADAPTER_SUFFIX}"
 MARKER="models/.pipeline_smoke_10.ok"
 rm -f "$MARKER"
 
@@ -122,10 +125,13 @@ if [[ "$MERGE" == "1" ]]; then
     echo "Che do MERGE: Hugging Face + assets/labels.csv ($LOCAL_COUNT mau local) -> data/combined"
 fi
 SMOKE_MAX=$((REPO_SAMPLES + LOCAL_COUNT))
-echo "  -> train $SMOKE_MAX mau ($REPO_SAMPLES tu repo + $LOCAL_COUNT tu assets) | batch=$BATCH_SIZE no_kl=$NO_KL"
+echo "  -> train $SMOKE_MAX mau ($REPO_SAMPLES tu repo + $LOCAL_COUNT tu assets) | batch=$BATCH_SIZE no_kl=$NO_KL use_4bit=$USE_4BIT"
 EXTRA_TRAIN_ARGS=()
 if [[ "$NO_KL" == "1" ]]; then
     EXTRA_TRAIN_ARGS+=(--no-kl)
+fi
+if [[ "$USE_4BIT" == "0" ]]; then
+    EXTRA_TRAIN_ARGS+=(--no-4bit)
 fi
 if [[ -n "$MAX_SEQ_LEN" ]]; then
     EXTRA_TRAIN_ARGS+=(--max-seq-len "$MAX_SEQ_LEN")
