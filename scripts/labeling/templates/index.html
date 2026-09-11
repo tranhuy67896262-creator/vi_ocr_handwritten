@@ -1,0 +1,340 @@
+<!doctype html>
+<html lang="vi" data-bs-theme="dark">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>OCR Label Editor</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+  <style>
+    body { background: #0b0e14; color: #e6edf3; }
+    .viewer-header { position: sticky; top: 0; z-index: 10; background: #0d1117; border-bottom: 1px solid #21262d; }
+    .search-input, .form-select, .form-control { background: #0d1117; border-color: #30363d; color: #e6edf3; }
+    .card-panel { background: #0d1117; border: 1px solid #21262d; }
+    .col-head { font-weight: 700; }
+    .col-head .sub { display: block; font-weight: 400; font-size: .8rem; color: #7d8590; font-style: italic; }
+    .ds-row { border-bottom: 3px solid #3d444d; }
+    .ds-row:hover { background: #11161f; }
+    .ds-image { width: 100%; max-height: 140px; object-fit: contain; object-position: left center; background: #fff; border-radius: 6px; }
+    textarea.row-text { background: #0d1117; color: #e6edf3; min-height: 110px; resize: vertical; font-size: .95rem; }
+    textarea.row-text.dirty, select.split-input.dirty { border-color: #fd7e14 !important; box-shadow: 0 0 0 .2rem rgba(253,126,20,.15); }
+    .muted-label { color: #7d8590; font-size: .82rem; }
+    .badge-source { font-size: .7rem; }
+  </style>
+</head>
+<body>
+  <header class="viewer-header py-2 mb-3">
+    <div class="container-fluid px-3">
+      <div class="d-flex flex-wrap gap-2 align-items-center">
+        <span class="fw-bold text-nowrap">OCR Label Editor</span>
+        <select id="source" class="form-select form-select-sm" style="width:auto"></select>
+        <input id="search" class="form-control form-control-sm search-input flex-grow-1" style="min-width:200px" placeholder="Tìm theo tên ảnh hoặc nhãn...">
+        <select id="splitFilter" class="form-select form-select-sm" style="width:auto">
+          <option value="">Tất cả split</option>
+          <option value="train">train</option>
+          <option value="test">test</option>
+        </select>
+        <button id="reload" class="btn btn-sm btn-outline-secondary">Tải lại</button>
+        <button id="saveAll" class="btn btn-sm btn-warning">Lưu tất cả</button>
+        <span id="summary" class="small text-secondary text-nowrap"></span>
+      </div>
+    </div>
+  </header>
+
+  <main class="container-fluid px-3 pb-5">
+    <div id="sourceAlert" class="alert alert-warning d-none py-2" role="alert"></div>
+
+    <div id="uploadCard" class="card card-panel mb-3 d-none">
+      <div class="card-body py-2">
+        <div class="fw-bold mb-2">Thêm ảnh cá nhân</div>
+        <div class="row g-2">
+          <div class="col-12 col-md-5">
+            <label class="muted-label" for="newFile">Chọn ảnh từ máy tính</label>
+            <input id="newFile" type="file" accept="image/*" class="form-control form-control-sm">
+            <img id="newPreview" class="ds-image mt-2" alt="xem trước ảnh mới" style="display:none">
+          </div>
+          <div class="col-12 col-md-7">
+            <label class="muted-label" for="newText">Nhãn (transcription)</label>
+            <textarea id="newText" class="form-control row-text" placeholder="Gõ nhãn rồi bấm Thêm..."></textarea>
+            <div class="d-flex gap-2 mt-2 align-items-center">
+              <select id="newSplit" class="form-select form-select-sm" style="width:auto">
+                <option value="train" selected>train</option>
+                <option value="test">test</option>
+              </select>
+              <button id="addRow" class="btn btn-sm btn-success">Thêm</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div id="alert" class="alert d-none py-2" role="alert"></div>
+
+    <div class="row g-0 px-2 pb-1">
+      <div class="col-12 col-md-5 col-head">image<span class="sub">image</span></div>
+      <div class="col-12 col-md-7 col-head">text<span class="sub">string</span></div>
+    </div>
+    <div id="samples"></div>
+    <div class="text-center my-3">
+      <button id="loadMore" class="btn btn-outline-secondary d-none">Tải thêm</button>
+    </div>
+  </main>
+
+<script>
+const PAGE_SIZE = 50;
+let rows = [];
+let dirty = new Map();
+let currentSource = '';
+let hasMore = false;
+
+function showAlert(message, type) {
+  const el = document.getElementById('alert');
+  el.textContent = message;
+  el.className = `alert alert-${type || 'success'} py-2`;
+  window.clearTimeout(showAlert.timer);
+  showAlert.timer = window.setTimeout(() => el.classList.add('d-none'), 4000);
+}
+
+function escapeHtml(value) {
+  return String(value == null ? '' : value).replace(/[&<>'"]/g, c => (
+    {'&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;'}[c]
+  ));
+}
+
+function isDirty(row) {
+  const old = dirty.get(row.uid);
+  if (!old) return false;
+  return old.text !== row.text || old.split !== row.split;
+}
+
+function markDirty(row) {
+  if (!dirty.has(row.uid)) dirty.set(row.uid, {text: row._origText, split: row._origSplit});
+}
+
+function updateSummary(visibleTotal) {
+  const pending = [...dirty.keys()].length;
+  document.getElementById('summary').textContent = `${rows.length}/${visibleTotal || rows.length} · ${pending} chưa lưu`;
+}
+
+function render() {
+  const container = document.getElementById('samples');
+  container.innerHTML = rows.map(row => {
+    const splitOptions = ['train', 'test'].map(v =>
+      `<option value="${v}" ${row.split === v ? 'selected' : ''}>${v}</option>`).join('');
+    const splitDisabled = row.can_edit_split ? '' : 'disabled';
+    const deleteBtn = row.can_delete
+      ? `<button class="btn btn-sm btn-outline-danger delete-one" data-uid="${escapeHtml(row.uid)}">Xóa</button>` : '';
+    return `
+    <div class="ds-row row g-0" data-uid="${escapeHtml(row.uid)}">
+      <div class="col-12 col-md-5 p-2 border-end">
+        <div class="d-flex justify-content-between align-items-center mb-1 gap-2">
+          <span class="fw-bold small text-truncate">${escapeHtml(row.image_ref)}</span>
+          <span class="badge text-bg-secondary badge-source flex-shrink-0">${escapeHtml(row.source)}</span>
+        </div>
+        <img class="ds-image" src="${escapeHtml(row.image_url)}" alt="${escapeHtml(row.image_ref)}" loading="lazy">
+      </div>
+      <div class="col-12 col-md-7 p-2">
+        <textarea class="form-control row-text text-input" data-uid="${escapeHtml(row.uid)}">${escapeHtml(row.text)}</textarea>
+        <div class="d-flex gap-2 mt-2 align-items-center flex-wrap">
+          <select class="form-select form-select-sm split-input" style="width:auto" data-uid="${escapeHtml(row.uid)}" ${splitDisabled}>${splitOptions}</select>
+          <button class="btn btn-sm btn-primary save-one" data-uid="${escapeHtml(row.uid)}">Lưu</button>
+          <button class="btn btn-sm btn-outline-secondary copy-one" data-url="${escapeHtml(row.image_url)}">Copy ảnh</button>
+          ${deleteBtn}
+          <span class="small text-success save-status"></span>
+        </div>
+      </div>
+    </div>`;
+  }).join('');
+  bindInputs();
+  document.getElementById('loadMore').classList.toggle('d-none', !hasMore);
+  updateSummary(rows.length);
+}
+
+function bindInputs() {
+  document.querySelectorAll('.text-input').forEach(input => input.addEventListener('input', event => {
+    const row = rows.find(r => r.uid === event.target.dataset.uid);
+    if (!row) return;
+    markDirty(row);
+    row.text = event.target.value;
+    event.target.classList.toggle('dirty', isDirty(row));
+    updateSummary(rows.length);
+  }));
+  document.querySelectorAll('.split-input').forEach(input => input.addEventListener('change', event => {
+    const row = rows.find(r => r.uid === event.target.dataset.uid);
+    if (!row) return;
+    markDirty(row);
+    row.split = event.target.value;
+    event.target.classList.toggle('dirty', isDirty(row));
+    updateSummary(rows.length);
+  }));
+  document.querySelectorAll('.save-one').forEach(btn => btn.addEventListener('click', () => saveRow(btn.dataset.uid, btn)));
+  document.querySelectorAll('.copy-one').forEach(btn => btn.addEventListener('click', () => copyImage(btn)));
+  document.querySelectorAll('.delete-one').forEach(btn => btn.addEventListener('click', () => deleteRow(btn)));
+}
+
+async function loadRows(reset) {
+  const query = document.getElementById('search').value.trim();
+  const split = document.getElementById('splitFilter').value;
+  const offset = reset ? 0 : rows.length;
+  const url = `/api/rows?source=${encodeURIComponent(currentSource)}&query=${encodeURIComponent(query)}&split=${encodeURIComponent(split)}&offset=${offset}&limit=${PAGE_SIZE}`;
+  const response = await fetch(url);
+  const data = await response.json();
+  if (!response.ok) throw new Error(data.error || 'Không đọc được dữ liệu');
+  const incoming = (data.rows || []).map(r => ({...r, _origText: r.text, _origSplit: r.split}));
+  rows = reset ? incoming : rows.concat(incoming);
+  hasMore = !!data.has_more;
+  dirty.clear();
+  render();
+}
+
+async function saveRow(uid, button) {
+  const row = rows.find(r => r.uid === uid);
+  if (!row) return;
+  if (button) { button.disabled = true; button.textContent = 'Đang lưu...'; }
+  try {
+    const payload = {uid, text: row.text};
+    if (row.can_edit_split) payload.split = row.split;
+    const response = await fetch('/api/rows', {
+      method: 'PUT', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(payload)
+    });
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.error || 'Không lưu được');
+    dirty.delete(uid);
+    row._origText = row.text;
+    row._origSplit = row.split;
+    render();
+    showAlert(`Đã lưu ${row.image_ref}`);
+  } catch (error) {
+    showAlert(error.message, 'danger');
+  } finally {
+    if (button) { button.disabled = false; button.textContent = 'Lưu'; }
+  }
+}
+
+async function saveAll() {
+  const pending = rows.filter(isDirty);
+  if (!pending.length) { showAlert('Không có thay đổi cần lưu', 'info'); return; }
+  const button = document.getElementById('saveAll');
+  button.disabled = true; button.textContent = `Đang lưu ${pending.length}...`;
+  let saved = 0;
+  try {
+    for (const row of pending) {
+      const payload = {uid: row.uid, text: row.text};
+      if (row.can_edit_split) payload.split = row.split;
+      const response = await fetch('/api/rows', {
+        method: 'PUT', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(payload)
+      });
+      if (!response.ok) throw new Error(`Lỗi lưu ${row.image_ref}`);
+      row._origText = row.text; row._origSplit = row.split;
+      saved += 1;
+    }
+    dirty.clear();
+    render();
+    showAlert(`Đã lưu ${saved} thay đổi`);
+  } catch (error) {
+    showAlert(error.message, 'danger');
+  } finally {
+    button.disabled = false; button.textContent = 'Lưu tất cả';
+  }
+}
+
+function updateUploadPreview() {
+  const input = document.getElementById('newFile');
+  const preview = document.getElementById('newPreview');
+  const file = input.files && input.files[0];
+  if (preview.src && preview.src.startsWith('blob:')) URL.revokeObjectURL(preview.src);
+  if (file) { preview.src = URL.createObjectURL(file); preview.style.display = ''; }
+  else { preview.removeAttribute('src'); preview.style.display = 'none'; }
+}
+
+async function addRowUpload() {
+  const input = document.getElementById('newFile');
+  const file = input.files && input.files[0];
+  if (!file) { showAlert('Chọn ảnh trước', 'warning'); return; }
+  const form = new FormData();
+  form.append('image', file);
+  form.append('source', currentSource);
+  form.append('text', document.getElementById('newText').value);
+  form.append('split', document.getElementById('newSplit').value);
+  try {
+    const response = await fetch('/api/rows/upload', {method: 'POST', body: form});
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.error || 'Không thêm được');
+    input.value = '';
+    document.getElementById('newText').value = '';
+    updateUploadPreview();
+    await loadRows(true);
+    showAlert(`Đã thêm ${data.image_ref}`);
+  } catch (error) {
+    showAlert(error.message, 'danger');
+  }
+}
+
+async function copyImage(button) {
+  button.disabled = true;
+  try {
+    const response = await fetch(button.dataset.url);
+    const blob = await response.blob();
+    await navigator.clipboard.write([new ClipboardItem({[blob.type || 'image/png']: blob})]);
+    showAlert('Đã copy ảnh — qua ChatGPT bấm Ctrl+V');
+  } catch (error) {
+    showAlert(`Không copy được: ${error.message}`, 'danger');
+  } finally {
+    button.disabled = false;
+  }
+}
+
+async function deleteRow(button) {
+  const uid = button.dataset.uid;
+  if (!window.confirm('Xóa bản ghi này? File ảnh cũng sẽ bị xóa.')) return;
+  button.disabled = true;
+  try {
+    const response = await fetch(`/api/rows?uid=${encodeURIComponent(uid)}`, {method: 'DELETE'});
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.error || 'Không xóa được');
+    await loadRows(true);
+    showAlert('Đã xóa');
+  } catch (error) {
+    showAlert(error.message, 'danger');
+    button.disabled = false;
+  }
+}
+
+async function loadSources() {
+  const response = await fetch('/api/sources');
+  const data = await response.json();
+  if (!response.ok) throw new Error(data.error || 'Không đọc được nguồn');
+  const select = document.getElementById('source');
+  select.innerHTML = (data.sources || []).map(s =>
+    `<option value="${escapeHtml(s.name)}">${escapeHtml(s.label)}${s.available ? '' : ' (lỗi)'}</option>`).join('');
+  currentSource = select.value;
+  const chosen = (data.sources || []).find(s => s.name === currentSource);
+  document.getElementById('uploadCard').classList.toggle('d-none', !(chosen && chosen.can_add));
+  const alertBox = document.getElementById('sourceAlert');
+  if (chosen && chosen.error) { alertBox.textContent = chosen.error; alertBox.classList.remove('d-none'); }
+  else { alertBox.classList.add('d-none'); }
+  select.onchange = async () => {
+    currentSource = select.value;
+    const picked = (data.sources || []).find(s => s.name === currentSource);
+    document.getElementById('uploadCard').classList.toggle('d-none', !(picked && picked.can_add));
+    try { await loadRows(true); } catch (error) { showAlert(error.message, 'danger'); }
+  };
+}
+
+let searchTimer = null;
+document.getElementById('search').addEventListener('input', () => {
+  window.clearTimeout(searchTimer);
+  searchTimer = window.setTimeout(() => loadRows(true).catch(e => showAlert(e.message, 'danger')), 300);
+});
+document.getElementById('splitFilter').addEventListener('change', () => loadRows(true).catch(e => showAlert(e.message, 'danger')));
+document.getElementById('reload').addEventListener('click', () => loadRows(true).catch(e => showAlert(e.message, 'danger')));
+document.getElementById('loadMore').addEventListener('click', () => loadRows(false).catch(e => showAlert(e.message, 'danger')));
+document.getElementById('saveAll').addEventListener('click', saveAll);
+document.getElementById('newFile').addEventListener('change', updateUploadPreview);
+document.getElementById('addRow').addEventListener('click', addRowUpload);
+
+loadSources()
+  .then(() => loadRows(true))
+  .catch(error => showAlert(error.message, 'danger'));
+</script>
+</body>
+</html>

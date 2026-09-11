@@ -1,5 +1,7 @@
 """Load + format dataset chữ viết tay thành chat template Qwen."""
-from datasets import load_dataset
+from pathlib import Path
+
+from datasets import load_dataset, load_from_disk
 
 from src.utils.image import standardize_a4
 
@@ -58,17 +60,35 @@ def convert_to_chat(example, image_col, text_col, system_prompt,
 
 
 def load_dataset_with_fallback(config):
-    """Load dataset theo config (mặc định là source gốc 5CD-AI/Viet-Handwriting-OCR-v2)."""
+    """Load dataset theo config (mặc định source gốc 5CD-AI/Viet-Handwriting-OCR-v2).
+
+    Nếu ``DATASET_NAME`` là thư mục đã lưu bằng ``save_to_disk`` (vd ``data/combined``
+    do ``scripts.labeling merge`` tạo ra) thì đọc trực tiếp từ đĩa.
+    """
     candidates = list(dict.fromkeys([config.DATASET_NAME, "5CD-AI/Viet-Handwriting-OCR-v2"]))
     last_err = None
     for name in candidates:
         try:
             print(f"Đang load dataset: {name}")
+            if Path(name).is_dir():
+                return _load_local_dataset(name, config.TRAIN_SPLIT)
             return load_dataset(name, split=config.TRAIN_SPLIT, token=config.HF_TOKEN or None)
         except Exception as err:  # noqa: BLE001
             last_err = err
             print(f"  Không load được {name}: {err}")
     raise RuntimeError(f"Không load được dataset nào. Lỗi cuối: {last_err}")
+
+
+def _load_local_dataset(path, split):
+    """Đọc DatasetDict đã lưu local và chọn split train."""
+    bundle = load_from_disk(path)
+    if hasattr(bundle, "keys"):
+        if split in bundle:
+            return bundle[split]
+        first = next(iter(bundle.keys()))
+        print(f"  Không có split '{split}', dùng '{first}'")
+        return bundle[first]
+    return bundle
 
 
 def build_train_eval_datasets(config, max_samples=None):

@@ -32,8 +32,11 @@ fi
 #   --train       : train thật (cài full torch-CUDA + requirements)
 #   --ui          : giống mặc định (giữ để tương thích cũ)
 #   --eval[=NNN]  : sau khi train, chạy eval CER/WER trên NNN mẫu (mặc định 100)
+#   --merge       : gộp dataset HF + ảnh cá nhân (assets/labels.csv) vào
+#                   data/combined rồi train trên đó (ngầm bật --train)
 DO_UI=1
 DO_EVAL=""
+DO_MERGE=""
 EVAL_NUM="100"
 NEW_ARGS=()
 HAS_ARGS=""
@@ -41,6 +44,7 @@ for arg in "$@"; do
     case "$arg" in
         --ui)     DO_UI=1 ;;
         --train)  DO_UI="" ;;
+        --merge)  DO_MERGE=1; DO_UI="" ;;
         --eval)   DO_EVAL=1 ;;
         --eval=*) DO_EVAL=1; EVAL_NUM="${arg#--eval=}" ;;
         *)        NEW_ARGS+=("$arg"); HAS_ARGS=1 ;;
@@ -129,9 +133,29 @@ fi
 
 echo "GPU: $("$PYTHON" -c "import torch; print(torch.cuda.get_device_name(0))" 2>/dev/null || echo 'CPU')"
 
+# --merge: gop HF + anh ca nhan (assets/labels.csv) thanh data/combined,
+# roi mac dinh train tren dataset da gop neu nguoi dung khong tu truyen --dataset.
+if [ -n "$DO_MERGE" ]; then
+    echo "===== Gop dataset: Hugging Face + anh ca nhan -> data/combined ====="
+    "$PYTHON" -m scripts.labeling merge
+    HAS_DATASET=""
+    if [ -n "$HAS_ARGS" ]; then
+        for existing in "${NEW_ARGS[@]}"; do
+            case "$existing" in
+                --dataset|--dataset=*) HAS_DATASET=1 ;;
+            esac
+        done
+    fi
+    if [ -z "$HAS_DATASET" ]; then
+        NEW_ARGS+=(--dataset data/combined)
+        HAS_ARGS=1
+    fi
+fi
+
 echo "Bat dau train..."
 echo "  Smoke test: $0 --train --max-samples 100"
 echo "  Train full: $0 --train"
+echo "  Merge+train: $0 --merge   (HF + assets/labels.csv)"
 echo "  Push Hub  : $0 --train --push --hub-repo <owner>/qwen25vl-7b-vi-hwr-lora"
 echo
 

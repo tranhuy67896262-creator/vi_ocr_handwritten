@@ -34,6 +34,10 @@ local/
 # Gradio runtime cache (tu sinh khi chay UI, khong commit)
 .gradio/
 
+# Labeling: backup CSV tu dong (moi lan ghi labels.csv deu sinh .bak)
+assets/labels.csv.*.bak
+assets/hf_overrides.csv.*.bak
+
 # Jupyter
 .ipynb_checkpoints
 *.ipynb
