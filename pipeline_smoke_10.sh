@@ -7,6 +7,14 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$ROOT"
 
+# Nhan doi so vi tri: [3b|7b] [HF_TOKEN] (model la tuy chon, token la cai con lai).
+MODEL_CHOICE=""
+if [[ $# -gt 0 && "${1:0:2}" != "--" ]]; then
+    case "${1,,}" in
+        3b) MODEL_CHOICE="3b"; shift ;;
+        7b) MODEL_CHOICE="7b"; shift ;;
+    esac
+fi
 HF_TOKEN_ARG=()
 if [[ $# -gt 0 && "${1:0:2}" != "--" ]]; then
     HF_TOKEN_ARG=("$1")
@@ -14,23 +22,35 @@ if [[ $# -gt 0 && "${1:0:2}" != "--" ]]; then
 fi
 if [[ $# -gt 0 ]]; then
     echo "[ERR] Tham so khong hop le: $1"
-    echo "Dung: bash pipeline_smoke_10.sh [HF_TOKEN]"
-    echo "Mac dinh gop data assets/ + repo. Tat: MERGE=0 bash pipeline_smoke_10.sh [HF_TOKEN]"
+    echo "Dung: bash pipeline_smoke_10.sh [3b|7b] [HF_TOKEN]"
+    echo "Mac dinh gop data assets/ + repo. Tat: MERGE=0 bash pipeline_smoke_10.sh [3b|7b] [HF_TOKEN]"
     exit 1
 fi
 if [[ ${#HF_TOKEN_ARG[@]} -eq 0 && -z "${HF_TOKEN:-}" ]] && ! grep -q '^HF_TOKEN' .env.dev 2>/dev/null; then
     echo "[ERR] Thieu HF_TOKEN cho gated dataset."
-    echo "Dung: bash pipeline_smoke_10.sh hf_xxxxx"
+    echo "Dung: bash pipeline_smoke_10.sh [3b|7b] hf_xxxxx"
     echo "Hoac export HF_TOKEN / tao .env.dev truoc khi chay."
     exit 1
 fi
 
+if [[ -n "$MODEL_CHOICE" && -z "${MODEL_NAME:-}" ]]; then
+    MODEL_NAME="Qwen/Qwen2.5-VL-${MODEL_CHOICE^^}-Instruct"
+fi
 MODEL_NAME="${MODEL_NAME:-Qwen/Qwen2.5-VL-7B-Instruct}"
+case "$MODEL_NAME" in
+    *3B*|*3b*) MODEL_TAG="3b" ;;
+    *7B*|*7b*) MODEL_TAG="7b" ;;
+    *) MODEL_TAG="" ;;
+esac
+if [[ -z "$MODEL_TAG" ]]; then
+    echo "[ERR] Chi ho tro Qwen2.5-VL 3B hoac 7B: $MODEL_NAME"
+    exit 1
+fi
 DATASET_NAME="${DATASET_NAME:-}"
 BATCH_SIZE="${BATCH_SIZE:-8}"
 GRADIENT_ACCUMULATION_STEPS="${GRADIENT_ACCUMULATION_STEPS:-4}"
 TEST_IMAGE="${TEST_IMAGE:-assets/vi-handwriting-sample-1.png}"
-OLLAMA_MODEL="${OLLAMA_MODEL:-qwen25vl-7b-vi-hwr-smoke}"
+OLLAMA_MODEL="${OLLAMA_MODEL:-qwen25vl-${MODEL_TAG}-vi-hwr-smoke}"
 LLAMA_CPP_DIR="${LLAMA_CPP_DIR:-/content/llama.cpp}"
 # Mac dinh MERGE=1: gop Hugging Face + assets/labels.csv -> data/combined roi train.
 # Dat MERGE=0 de chi train tren dataset HF (bo qua data noi bo).
@@ -41,16 +61,12 @@ else
     PYTHON="${PYTHON:-python}"
 fi
 
-ADAPTER_DIR="models/qwen25vl-7b-vi-hwr-lora"
-MERGED_DIR="models/qwen25vl-7b-vi-hwr-lora-smoke-merged"
-GGUF_DIR="models/gguf-smoke"
+ADAPTER_DIR="models/qwen25vl-${MODEL_TAG}-vi-hwr-lora"
+MERGED_DIR="models/qwen25vl-${MODEL_TAG}-vi-hwr-lora-smoke-merged"
+GGUF_DIR="models/gguf-smoke-${MODEL_TAG}"
 MARKER="models/.pipeline_smoke_10.ok"
 rm -f "$MARKER"
 
-if [[ "$MODEL_NAME" != "Qwen/Qwen2.5-VL-7B-Instruct" ]]; then
-    echo "[ERR] Pipeline nay dang co dinh cho Qwen2.5-VL-7B-Instruct: $MODEL_NAME"
-    exit 1
-fi
 if [[ ! "$BATCH_SIZE" =~ ^[1-9][0-9]*$ ]]; then
     echo "[ERR] BATCH_SIZE phai la so nguyen duong: $BATCH_SIZE"
     exit 1

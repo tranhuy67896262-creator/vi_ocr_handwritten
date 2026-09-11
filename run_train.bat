@@ -174,5 +174,5 @@ if defined DO_EVAL (
 )
 
 echo(
-echo Done. Results at: models\qwen25vl-7b-vi-hwr-lora\  (see training_metadata.json + training.log)
+echo Done. Results at: models\qwen25vl-<size>-vi-hwr-lora\  (see training_metadata.json + training.log)
 exit /b %EXIT_CODE%

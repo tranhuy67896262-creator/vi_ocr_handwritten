@@ -181,4 +181,4 @@ if [ -n "$DO_EVAL" ]; then
 fi
 
 echo
-echo "Xong. Ket qua o: models/qwen25vl-7b-vi-hwr-lora/ (xem training_metadata.json + training.log)"
+echo "Xong. Ket qua o: models/qwen25vl-<size>-vi-hwr-lora/ (xem training_metadata.json + training.log)"
