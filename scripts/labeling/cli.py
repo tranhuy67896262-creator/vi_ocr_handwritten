@@ -6,10 +6,12 @@
 from __future__ import annotations
 
 import argparse
+import sys
 from pathlib import Path
 
 from configs.configs import Configs
 
+from .domain import LabelError
 from .hf_source import HfConfig, HuggingFaceSource
 from .local_source import LocalImageSource
 from .merge import DatasetMerger, MergeConfig
@@ -61,6 +63,8 @@ def build_parser() -> argparse.ArgumentParser:
     merge_parser = sub.add_parser("merge", help="Gop HF + anh ca nhan -> data/combined")
     _add_common(merge_parser, paths)
     merge_parser.add_argument("--output", type=Path, default=paths["output_dir"])
+    merge_parser.add_argument("--dry-run", action="store_true",
+                              help="Chi kiem tra schema/kha khop, khong ghi file")
     merge_parser.add_argument("--token", default="", help="HF token (mac dinh: tu .env.dev)")
     return parser
 
@@ -92,14 +96,29 @@ def _run_merge(args: argparse.Namespace) -> None:
         overrides_path=args.overrides,
         output_dir=args.output,
     ))
-    counts = merger.merge()
-    print(f"Da gop dataset vao: {args.output}")
-    for split, total in counts.items():
+    try:
+        report = merger.merge(dry_run=args.dry_run)
+    except LabelError as error:
+        print(f"[ERR] {error}")
+        raise SystemExit(1) from error
+    except Exception as error:  # noqa: BLE001 - CLI bao loi ro thay vi traceback
+        print(f"[ERR] Loi khong mong doi khi gop dataset: {error}")
+        raise SystemExit(1) from error
+    for message in report.warnings:
+        print(f"[WARN] {message}")
+    if report.skipped_local:
+        print(f"[WARN] Bo qua {report.skipped_local} anh local (thieu nhan/file).")
+    if args.dry_run:
+        print("Dry-run OK: schema HF + data ca nhan khop, chua ghi file.")
+    else:
+        print(f"Da gop dataset vao: {args.output}")
+    for split, total in report.counts.items():
         print(f"  {split}: {total} rows")
 
 
 def main(argv: list[str] | None = None) -> None:
     """Entry point CLI."""
+    _force_utf8_console()
     parser = build_parser()
     args = parser.parse_args(argv)
     if args.command == "merge":
@@ -108,6 +127,15 @@ def main(argv: list[str] | None = None) -> None:
         _run_serve(args)
     else:
         parser.print_help()
+
+
+def _force_utf8_console() -> None:
+    """Tránh UnicodeEncodeError khi in tiếng Việt trên console Windows (cp1252)."""
+    for stream in (sys.stdout, sys.stderr):
+        try:
+            stream.reconfigure(encoding="utf-8", errors="replace")
+        except (AttributeError, OSError):
+            continue
 
 
 if __name__ == "__main__":

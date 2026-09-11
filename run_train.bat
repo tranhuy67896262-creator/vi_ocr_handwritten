@@ -36,8 +36,10 @@ echo   %~nx0 hf_xxxxxxxx --train --max-samples 100
 
 REM Mac dinh: chi cai toi thieu + mo UI Gradio (khong train, khong tai data).
 REM --train = train that (cai full torch-CUDA + requirements).
+REM --merge = gop HF + assets/labels.csv vao data/combined roi train (ngam bat --train).
 REM --ui = giong mac dinh (giu de tuong thich cu).
 set "DO_UI=1"
+set "DO_MERGE="
 
 REM Thu gom cac doi so con lai (vi %*% khong doi sau shift).
 REM Bo --ui / --eval[=N] ra khoi REST (co rieng cua wrapper, giong run_train.sh).
@@ -49,6 +51,9 @@ if "%~1"=="" goto :argsdone
 if "%~1"=="--ui" goto :nextarg
 if "%~1"=="--train" set "DO_UI="
 if "%~1"=="--train" goto :nextarg
+if "%~1"=="--merge" set "DO_MERGE=1"
+if "%~1"=="--merge" set "DO_UI="
+if "%~1"=="--merge" goto :nextarg
 echo %~1 | findstr /R /C:"^--eval" >nul 2>&1
 if errorlevel 1 goto :notflag
 set "DO_EVAL=1"
@@ -133,8 +138,19 @@ if errorlevel 1 (
     if errorlevel 1 exit /b 1
 )
 
+REM --merge: gop Hugging Face + assets/labels.csv -> data/combined, roi mac dinh
+REM train tren dataset da gop neu nguoi dung khong tu truyen --dataset.
+if not defined DO_MERGE goto :merge_done
+echo Merging Hugging Face + assets/labels.csv into data/combined...
+"%PY%" -m scripts.labeling merge
+if errorlevel 1 exit /b 1
+echo %REST% | findstr /C:"--dataset" >nul 2>&1
+if errorlevel 1 set "REST=%REST% --dataset data/combined"
+:merge_done
+
 echo Start training...
 echo   Smoke test: %~nx0 --train --max-samples 100
+echo   Merge+train: %~nx0 --merge   (HF + assets/labels.csv)
 echo   Real train: run on Colab GPU via run_train.sh --train
 echo(
 

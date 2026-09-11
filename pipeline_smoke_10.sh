@@ -15,6 +15,7 @@ fi
 if [[ $# -gt 0 ]]; then
     echo "[ERR] Tham so khong hop le: $1"
     echo "Dung: bash pipeline_smoke_10.sh [HF_TOKEN]"
+    echo "Them data ca nhan: MERGE=1 bash pipeline_smoke_10.sh [HF_TOKEN]"
     exit 1
 fi
 if [[ ${#HF_TOKEN_ARG[@]} -eq 0 && -z "${HF_TOKEN:-}" ]] && ! grep -q '^HF_TOKEN' .env.dev 2>/dev/null; then
@@ -31,6 +32,8 @@ GRADIENT_ACCUMULATION_STEPS="${GRADIENT_ACCUMULATION_STEPS:-4}"
 TEST_IMAGE="${TEST_IMAGE:-assets/vi-handwriting-sample-1.png}"
 OLLAMA_MODEL="${OLLAMA_MODEL:-qwen25vl-7b-vi-hwr-smoke}"
 LLAMA_CPP_DIR="${LLAMA_CPP_DIR:-/content/llama.cpp}"
+# MERGE=1: gop Hugging Face + assets/labels.csv -> data/combined roi train tren do.
+MERGE="${MERGE:-0}"
 if [[ -x ".venv/bin/python" ]]; then
     PYTHON=".venv/bin/python"
 else
@@ -76,7 +79,13 @@ TRAIN_DATASET_ARG=()
 if [[ -n "$DATASET_NAME" ]]; then
     TRAIN_DATASET_ARG=(--dataset "$DATASET_NAME")
 fi
+MERGE_ARG=()
+if [[ "$MERGE" == "1" ]]; then
+    MERGE_ARG=(--merge)
+    echo "Che do MERGE: Hugging Face + assets/labels.csv -> data/combined"
+fi
 bash run_train.sh "${HF_TOKEN_ARG[@]}" --train \
+    "${MERGE_ARG[@]}" \
     --model "$MODEL_NAME" \
     "${TRAIN_DATASET_ARG[@]}" \
     --max-samples 10 \
