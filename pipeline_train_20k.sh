@@ -15,7 +15,7 @@ fi
 if [[ $# -gt 0 ]]; then
     echo "[ERR] Tham so khong hop le: $1"
     echo "Dung: bash pipeline_train_20k.sh [HF_TOKEN]"
-    echo "Them data ca nhan: MERGE=1 bash pipeline_train_20k.sh [HF_TOKEN]"
+    echo "Mac dinh gop data assets/ + repo. Tat: MERGE=0 bash pipeline_train_20k.sh [HF_TOKEN]"
     exit 1
 fi
 if [[ ${#HF_TOKEN_ARG[@]} -eq 0 && -z "${HF_TOKEN:-}" ]] && ! grep -q '^HF_TOKEN' .env.dev 2>/dev/null; then
@@ -34,8 +34,9 @@ EVAL_SAMPLES="${EVAL_SAMPLES:-200}"
 TEST_IMAGE="${TEST_IMAGE:-assets/vi-handwriting-sample-1.png}"
 OLLAMA_MODEL="${OLLAMA_MODEL:-qwen25vl-7b-vi-hwr-20k}"
 LLAMA_CPP_DIR="${LLAMA_CPP_DIR:-/content/llama.cpp}"
-# MERGE=1: gop Hugging Face + assets/labels.csv -> data/combined roi train tren do.
-MERGE="${MERGE:-0}"
+# Mac dinh MERGE=1: gop Hugging Face + assets/labels.csv -> data/combined roi train.
+# Dat MERGE=0 de chi train tren dataset HF (bo qua data noi bo).
+MERGE="${MERGE:-1}"
 if [[ -x ".venv/bin/python" ]]; then
     PYTHON=".venv/bin/python"
 else
@@ -82,20 +83,39 @@ if ! command -v "$PYTHON" >/dev/null 2>&1 && [[ ! -x "$PYTHON" ]]; then
     exit 1
 fi
 if ! "$PYTHON" -c "import torch, transformers, peft" >/dev/null 2>&1; then
-    echo "[ERR] Python thieu torch/transformers/peft: $PYTHON"
-    exit 1
+    echo "[WARN] Python thieu torch/transformers/peft — run_train.sh (--train) se cai truoc khi train."
 fi
 
-echo "=== 1/5 Train toi da $MAX_SAMPLES anh ==="
+# Dem so mau local co nhan trong assets/labels.csv (cong vao --max-samples).
+count_local_samples() {
+    "$PYTHON" -c 'import csv
+n = 0
+try:
+    with open("assets/labels.csv", encoding="utf-8-sig", newline="") as fh:
+        for row in csv.DictReader(fh):
+            if (row.get("text") or "").strip():
+                n += 1
+except OSError:
+    n = 0
+print(n)' 2>/dev/null || echo 0
+}
+
+echo "=== 1/5 Train data repo + data assets ==="
 TRAIN_DATASET_ARG=()
 if [[ -n "$DATASET_NAME" ]]; then
     TRAIN_DATASET_ARG=(--dataset "$DATASET_NAME")
 fi
+REPO_SAMPLES="${REPO_SAMPLES:-$MAX_SAMPLES}"
 MERGE_ARG=()
+LOCAL_COUNT=0
 if [[ "$MERGE" == "1" ]]; then
     MERGE_ARG=(--merge)
-    echo "Che do MERGE: Hugging Face + assets/labels.csv -> data/combined"
+    LOCAL_COUNT="$(count_local_samples)"
+    case "$LOCAL_COUNT" in ''|*[!0-9]*) LOCAL_COUNT=0 ;; esac
+    echo "Che do MERGE: Hugging Face + assets/labels.csv ($LOCAL_COUNT mau local) -> data/combined"
 fi
+MAX_SAMPLES=$((REPO_SAMPLES + LOCAL_COUNT))
+echo "  -> train $MAX_SAMPLES mau ($REPO_SAMPLES tu repo + $LOCAL_COUNT tu assets)"
 bash run_train.sh "${HF_TOKEN_ARG[@]}" --train \
     "${MERGE_ARG[@]}" \
     --model "$MODEL_NAME" \

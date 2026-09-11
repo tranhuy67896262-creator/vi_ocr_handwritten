@@ -158,7 +158,8 @@ class DatasetMerger:
                 continue
             local = _align_columns(local, target.column_names)
             try:
-                combined[split_name] = concatenate_datasets([target, local])
+                # Xếp local TRƯỚC để subset nhỏ (--max-samples) vẫn gồm data cá nhân.
+                combined[split_name] = concatenate_datasets([local, target])
             except Exception as error:  # noqa: BLE001 - cột không khớp giữa HF và local
                 raise ValidationError(
                     f"Không ghép được split '{split_name}': cột HF {target.column_names} "
