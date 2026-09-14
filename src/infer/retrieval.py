@@ -14,6 +14,14 @@ from src.utils.image import standardize_a4
 
 CLIP_NAME = "openai/clip-vit-base-patch32"
 
+try:  # faiss (thư viện ANN nổi tiếng) — tùy chọn; thiếu thì fallback numpy
+    import faiss
+
+    _HAS_FAISS = True
+except ImportError:  # pragma: no cover - phụ thuộc môi trường
+    faiss = None
+    _HAS_FAISS = False
+
 
 def _device():
     """CUDA nếu có, ngược lại CPU."""
@@ -40,20 +48,37 @@ class ClipEmbedder:
 
 
 class ImageIndex:
-    """Embeddings (đã chuẩn hóa L2) + refs (chỉ số dòng dataset gốc)."""
+    """Embeddings (đã chuẩn hóa L2) + refs (chỉ số dòng dataset gốc).
 
-    def __init__(self, embeddings, refs, meta=None):
+    Dùng **faiss** (IndexFlatIP, vì vector đã chuẩn hóa L2 nên IP = cosine) nếu
+    cài; nếu không thì fallback numpy. Meta (dataset/split/embedder) đi kèm file.
+    """
+
+    def __init__(self, embeddings, refs, meta=None, use_faiss=True):
         self.embeddings = np.asarray(embeddings, dtype="float32")
         self.refs = np.asarray(refs, dtype="int64")
         self.meta = dict(meta or {})
+        self.backend = "numpy"
+        self._faiss_index = None
+        if use_faiss and _HAS_FAISS and self.embeddings.ndim == 2 and len(self.refs):
+            try:
+                index = faiss.IndexFlatIP(self.embeddings.shape[1])
+                index.add(self.embeddings)
+                self._faiss_index = index
+                self.backend = "faiss"
+            except Exception:  # noqa: BLE001  # pylint: disable=broad-except
+                self._faiss_index = None
 
     def search(self, query_vec, k):
         """Trả về list chỉ số dòng gốc (refs) của ``k`` ảnh gần nhất."""
         if len(self.refs) == 0 or k <= 0:
             return []
-        q = np.asarray(query_vec, dtype="float32").reshape(-1)
-        sims = self.embeddings @ q
         k = min(int(k), len(self.refs))
+        query = np.asarray(query_vec, dtype="float32").reshape(1, -1)
+        if self._faiss_index is not None:
+            _, indices = self._faiss_index.search(query, k)
+            return [int(self.refs[i]) for i in indices[0]]
+        sims = self.embeddings @ query.reshape(-1)
         top = np.argpartition(-sims, k - 1)[:k]
         top = top[np.argsort(-sims[top])]
         return [int(r) for r in self.refs[top]]

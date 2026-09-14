@@ -5,6 +5,7 @@ Tim python theo thu tu: python dang chay hook -> .venv cua project
 chi chan khi code loi that (pylint exit != 0).
 """
 
+import os
 import subprocess
 import sys
 from pathlib import Path
@@ -38,7 +39,9 @@ def main():
             continue
         seen.add(python)
         if _has_pylint(python):
-            r = subprocess.run([python, "-m", "pylint", *TARGETS], check=False)
+            # PYTHONUTF8: pylint in tiếng Việt ra console Windows cp1252 -> crash.
+            env = {**os.environ, "PYTHONUTF8": "1", "PYTHONIOENCODING": "utf-8"}
+            r = subprocess.run([python, "-m", "pylint", *TARGETS], check=False, env=env)
             return r.returncode
     print("Bo qua pylint: khong tim thay python co pylint "
           "(cai vao .venv: uv pip install pylint). Commit van di tiep.")

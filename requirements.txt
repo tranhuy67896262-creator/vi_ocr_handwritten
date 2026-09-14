@@ -3,6 +3,7 @@ python-dotenv>=1.0
 pillow>=10.0
 tqdm>=4.66
 jiwer>=3.0
+gradio>=5.0  # UI (scripts/ui.py) + label editor (scripts/labeling)
 pymupdf>=1.24  # render trang PDF scan nhiều trang (pip thuần, không cần system lib)
 python-docx>=1.1  # trich anh nhung tu file Word .docx de OCR
 
@@ -19,6 +20,10 @@ torchao>=0.16; sys_platform != "win32"
 datasets>=3.0
 sentencepiece>=0.2.0
 tiktoken>=0.8
+# Hậu xử lý tiếng Việt: chuẩn hóa NFC/old-diacritics/Đ-Ð (thư viện NLP tiếng Việt nổi tiếng)
+underthesea>=9.0
+# Tìm kiếm vector gần đúng cho retrieval few-shot (tùy chọn; thiếu thì fallback numpy)
+faiss-cpu>=1.8; python_version < "3.14"
 
 # Optional: chỉ cài trên Linux/WSL, tăng tốc attention
 # flash-attn>=2.6

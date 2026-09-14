@@ -103,6 +103,8 @@ class Configs:
     MAX_NEW_TOKENS = 256
     # dtype khi OCR/export: fp16 (mặc định — hợp T4 và mọi GPU) | bf16 | auto (bf16 nếu hỗ trợ).
     INFER_DTYPE = "fp16"
+    # Hậu xử lý tiếng Việt (chữa dấu/lỗi ký tự OCR) — model HF seq2seq, bật qua cờ CLI/UI.
+    SPELLFIX_MODEL = "nrl-ai/vn-spell-correction-small"
     PDF_DPI = 200  # DPI render trang PDF scan (khớp file scan thực tế ~200dpi)
     # Số lát cắt mỗi trang A4 scan (PDF/DOCX): chẻ TRƯỚC khi thu nhỏ để mỗi lát
     # giữ chi tiết chữ nhỏ. Chỉ áp dụng khi ảnh lớn (cạnh dài > 1200px).

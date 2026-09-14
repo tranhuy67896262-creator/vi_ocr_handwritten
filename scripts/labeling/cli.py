@@ -6,17 +6,17 @@
 from __future__ import annotations
 
 import argparse
-import sys
 from pathlib import Path
 
 from configs.configs import Configs
+
+from src.utils.console import force_utf8_console
 
 from .domain import LabelError
 from .hf_source import HfConfig, HuggingFaceSource
 from .local_source import LocalImageSource
 from .merge import DatasetMerger, MergeConfig
 from .registry import DatasetRegistry
-from .server import DEFAULT_TEMPLATE, serve
 from .service import LabelService
 
 
@@ -57,7 +57,8 @@ def build_parser() -> argparse.ArgumentParser:
     serve_parser.add_argument("--host", default="127.0.0.1")
     serve_parser.add_argument("--port", type=int, default=9000)
     serve_parser.add_argument("--no-hf", action="store_true", help="Chi gan nhan anh ca nhan")
-    serve_parser.add_argument("--template", type=Path, default=DEFAULT_TEMPLATE)
+    serve_parser.add_argument("--share", action="store_true",
+                              help="Tao link Gradio public (mac dinh: chi local)")
     serve_parser.add_argument("--token", default="", help="HF token (mac dinh: tu .env.dev)")
 
     merge_parser = sub.add_parser("merge", help="Gop HF + anh ca nhan -> data/combined")
@@ -74,6 +75,8 @@ def _resolve_token(explicit: str) -> str:
 
 
 def _run_serve(args: argparse.Namespace) -> None:
+    from .gradio_app import build_app  # lazy: `merge` khong keo gradio
+
     sources: list = [LocalImageSource(args.images_dir, args.csv)]
     if not args.no_hf:
         sources.append(HuggingFaceSource(HfConfig(
@@ -83,7 +86,7 @@ def _run_serve(args: argparse.Namespace) -> None:
             overrides_path=args.overrides,
         )))
     service = LabelService(DatasetRegistry(sources))
-    serve(service, host=args.host, port=args.port, template_path=args.template)
+    build_app(service).launch(server_name=args.host, server_port=args.port, share=args.share)
 
 
 def _run_merge(args: argparse.Namespace) -> None:
@@ -118,7 +121,7 @@ def _run_merge(args: argparse.Namespace) -> None:
 
 def main(argv: list[str] | None = None) -> None:
     """Entry point CLI."""
-    _force_utf8_console()
+    force_utf8_console()
     parser = build_parser()
     args = parser.parse_args(argv)
     if args.command == "merge":
@@ -127,15 +130,6 @@ def main(argv: list[str] | None = None) -> None:
         _run_serve(args)
     else:
         parser.print_help()
-
-
-def _force_utf8_console() -> None:
-    """Tránh UnicodeEncodeError khi in tiếng Việt trên console Windows (cp1252)."""
-    for stream in (sys.stdout, sys.stderr):
-        try:
-            stream.reconfigure(encoding="utf-8", errors="replace")
-        except (AttributeError, OSError):
-            continue
 
 
 if __name__ == "__main__":

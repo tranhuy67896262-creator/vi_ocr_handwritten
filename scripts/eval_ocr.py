@@ -97,6 +97,14 @@ def main():
     parser.add_argument("--num-test", type=int, default=100, help="Số mẫu đánh giá trên test split")
     parser.add_argument("--no-adapter", action="store_true",
                         help="Zero-shot: chạy base model KHÔNG nạp LoRA adapter")
+    parser.add_argument("--no-a4", action="store_true",
+                        help="Tắt chuẩn hóa A4 (dùng cho ảnh crop dòng/word — tránh pad loãng chữ)")
+    parser.add_argument("--spell-fix", action="store_true",
+                        help="Hậu xử lý tiếng Việt bằng model spell-correction (chữa dấu/lỗi OCR)")
+    parser.add_argument("--spell-fix-model", type=str, default=None,
+                        help="Model HF spell-correction (mặc định: config.SPELLFIX_MODEL)")
+    parser.add_argument("--load-4bit", action="store_true",
+                        help="Nạp base 4-bit NF4 (bitsandbytes) để vừa GPU nhỏ (T4 15GB)")
     parser.add_argument("--prompt", type=str, default=None,
                         help="Prompt hệ thống tùy biến cho OCR (mặc định: config.SYSTEM_PROMPT)")
     parser.add_argument("--max-new-tokens", type=int, default=None,
@@ -120,6 +128,8 @@ def main():
         config.DATASET_NAME = args.dataset
     if args.max_new_tokens is not None:
         config.MAX_NEW_TOKENS = args.max_new_tokens
+    if args.no_a4:
+        config.A4_STANDARDIZE = False
     if args.prompt:
         # predict_image/ocr_pdf/ocr_docx mặc định dùng config.SYSTEM_PROMPT.
         config.SYSTEM_PROMPT = args.prompt
@@ -130,7 +140,8 @@ def main():
         adapter_dir = args.adapter or str(config.ADAPTER_DIR)
 
     try:
-        model, processor = load_ocr_model(config, adapter_dir, args.model)
+        model, processor = load_ocr_model(config, adapter_dir, args.model,
+                                          load_4bit=args.load_4bit)
     except Exception as exc:
         hint = ("Kiểm tra kết nối mạng/HF_TOKEN và tên base model."
                 if adapter_dir is None else
@@ -150,6 +161,13 @@ def main():
             log_and_exit(exc, stage="FEWSHOT",
                          extra_hint="Kiểm tra HF_TOKEN/dataset, hoặc file --retrieval-index.")
 
+    corrector = None
+    if args.spell_fix:
+        from src.infer.spellfix import VNSpellCorrector
+        model_id = args.spell_fix_model or config.SPELLFIX_MODEL
+        corrector = VNSpellCorrector(model_id, hf_token=config.HF_TOKEN)
+        print(f"Spell-fix: {model_id} ({corrector.device})")
+
     if args.image:
         try:
             suf = args.image.lower()
@@ -161,7 +179,13 @@ def main():
                 print(ocr_docx(config, model, processor, args.image))
             else:
                 img = Image.open(args.image).convert("RGB")
-                print(_predict(config, model, processor, img, k, static_exemplars, retriever))
+                pred = _predict(config, model, processor, img, k, static_exemplars, retriever)
+                if corrector is not None:
+                    corrected = corrector.correct(pred)
+                    print(f"RAW : {pred}")
+                    print(f"FIX : {corrected}")
+                else:
+                    print(pred)
         except Exception as exc:
             log_and_exit(exc, stage="OCR", extra_hint=f"Kiểm tra đường dẫn ảnh: {args.image}")
         return
@@ -175,7 +199,7 @@ def main():
     image_col, text_col = detect_columns(ds)
     mode = "zero-shot" if k <= 0 else (f"retrieval-{k}shot" if retriever else f"few-{k}shot")
     print(f"Eval {len(ds)} mẫu | chế độ: {mode}")
-    texts, preds = [], []
+    texts, preds, preds_fix = [], [], []
     for row in ds:
         try:
             img = row[image_col].convert("RGB")
@@ -183,14 +207,21 @@ def main():
         except Exception as exc:
             log_and_exit(exc, stage="OCR",
                          extra_hint="Lỗi khi OCR 1 mẫu (thường do ảnh hỏng hoặc VRAM).")
+        fixed = corrector.correct(pred) if corrector is not None else pred
         texts.append(row[text_col])
         preds.append(pred)
+        preds_fix.append(fixed)
         print(f"GT : {row[text_col]}")
         print(f"PR : {pred}")
+        if corrector is not None:
+            print(f"FIX: {fixed}")
         print("-" * 60)
 
     print(f"CER: {cer(texts, preds):.4f}")
     print(f"WER: {wer(texts, preds):.4f}")
+    if corrector is not None:
+        print(f"CER (spell-fix): {cer(texts, preds_fix):.4f}")
+        print(f"WER (spell-fix): {wer(texts, preds_fix):.4f}")
 
 
 if __name__ == "__main__":

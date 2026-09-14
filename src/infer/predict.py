@@ -10,22 +10,39 @@ from src.modeling.load import load_processor, resolve_attn_implementation, resol
 from src.utils.image import standardize_a4
 
 
-def load_ocr_model(config, adapter_dir=None, model_name=None):
+def load_ocr_model(config, adapter_dir=None, model_name=None, load_4bit=False):
     """Load model gốc + LoRA adapter để OCR.
 
     adapter_dir có thể là đường dẫn local hoặc repo id trên HF Hub (vd 'owner/repo').
     model_name là base model (mặc định config.MODEL_NAME) — PHẢI cùng họ với adapter
     (adapter 3B + base 7B sẽ lỗi shape).
+    load_4bit=True: nạp base 4-bit NF4 (bitsandbytes) để vừa GPU nhỏ (vd T4 15GB).
     """
     base = model_name or config.MODEL_NAME
     processor = load_processor(config, base)
-    model = Qwen2_5_VLForConditionalGeneration.from_pretrained(
-        base,
-        torch_dtype=resolve_infer_dtype(config),
-        device_map="auto",
-        attn_implementation=resolve_attn_implementation(config),
-        token=config.HF_TOKEN or None,
-    )
+    if load_4bit:
+        from transformers import BitsAndBytesConfig
+        quant = BitsAndBytesConfig(
+            load_in_4bit=True,
+            bnb_4bit_quant_type="nf4",
+            bnb_4bit_compute_dtype=torch.float16,
+            bnb_4bit_use_double_quant=True,
+        )
+        model = Qwen2_5_VLForConditionalGeneration.from_pretrained(
+            base,
+            quantization_config=quant,
+            device_map="auto",
+            attn_implementation=resolve_attn_implementation(config),
+            token=config.HF_TOKEN or None,
+        )
+    else:
+        model = Qwen2_5_VLForConditionalGeneration.from_pretrained(
+            base,
+            torch_dtype=resolve_infer_dtype(config),
+            device_map="auto",
+            attn_implementation=resolve_attn_implementation(config),
+            token=config.HF_TOKEN or None,
+        )
     if adapter_dir:
         is_local = Path(adapter_dir).exists()
         if not is_local and "/" not in str(adapter_dir):

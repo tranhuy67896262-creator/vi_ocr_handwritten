@@ -33,6 +33,8 @@ def main():
     parser.add_argument("--lora-r", type=int, default=None)
     parser.add_argument("--lora-alpha", type=int, default=None)
     parser.add_argument("--max-samples", type=int, default=None, help="Giới hạn mẫu để test nhanh")
+    parser.add_argument("--no-a4", action="store_true",
+                        help="Tắt chuẩn hóa A4 (dùng cho ảnh crop dòng/word — tránh pad loãng chữ)")
     parser.add_argument("--resume", action="store_true",
                         help="Tiếp tục từ checkpoint mới nhất (đứt giữa chừng train tiếp, không mất công)")
     parser.add_argument("--save-steps", type=int, default=None,
@@ -68,6 +70,8 @@ def main():
         config.LORA_ALPHA = args.lora_alpha
     if args.no_kl:
         config.KL_REGULARIZATION = False
+    if args.no_a4:
+        config.A4_STANDARDIZE = False
     if args.no_4bit:
         config.USE_4BIT = False
     if args.hub_repo:
