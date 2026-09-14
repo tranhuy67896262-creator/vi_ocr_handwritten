@@ -16,8 +16,8 @@ from configs.configs import Configs
 SCRIPT = PROJECT_ROOT / "scripts"
 
 MODEL_CHOICES = [
-    "Qwen/Qwen2.5-VL-3B-Instruct",
     "Qwen/Qwen2.5-VL-7B-Instruct",
+    "Qwen/Qwen2.5-VL-3B-Instruct",
 ]
 
 
@@ -36,7 +36,7 @@ def sync_adapter(model_name, current):
     return cur
 
 
-def _run(cmd, log="", cwd=None):
+def _run(cmd, log="", cwd=None, env=None):
     """Chạy 1 script con, stream output realtime vào log (cwd mặc định project)."""
     with subprocess.Popen(
         cmd,
@@ -47,6 +47,7 @@ def _run(cmd, log="", cwd=None):
         errors="replace",
         bufsize=1,
         cwd=str(cwd or PROJECT_ROOT),
+        env=env,
     ) as proc:
         for line in proc.stdout:
             log += line
@@ -104,28 +105,36 @@ def _get_ocr(config, adapter, model):
     return _OCR_CACHE[key]
 
 
-def _resolve_ocr(config, adapter, model):
-    adapter = (adapter or "").strip() or str(config.ADAPTER_DIR)
+def _resolve_ocr(config, adapter, model, zero_shot=False):
+    """Chọn (model, processor); zero_shot=True thì KHÔNG nạp adapter."""
+    if zero_shot:
+        adapter = None
+    else:
+        adapter = (adapter or "").strip() or str(config.ADAPTER_DIR)
     model = (model or "").strip() or config.MODEL_NAME
     return _get_ocr(config, adapter, model)
 
 
-def ocr_ui(image, adapter, model):
+def ocr_ui(image, adapter, model, zero_shot=False, prompt=""):
     """OCR 1 ảnh PIL từ UI."""
     if image is None:
         return "Chưa có ảnh. Hãy upload 1 ảnh chữ viết tay."
     config = Configs()
-    model_obj, processor = _resolve_ocr(config, adapter, model)
+    if (prompt or "").strip():
+        config.SYSTEM_PROMPT = prompt.strip()
+    model_obj, processor = _resolve_ocr(config, adapter, model, zero_shot)
     from src.infer.predict import predict_image
     return predict_image(config, model_obj, processor, image)
 
 
-def ocr_file_ui(file_path, adapter, model):
+def ocr_file_ui(file_path, adapter, model, zero_shot=False, prompt=""):
     """OCR file nhiều trang: PDF scan / Word (.docx) / ảnh lẻ."""
     if not file_path:
         return "Chưa có file. Hãy upload PDF, Word (.docx) hoặc ảnh."
     config = Configs()
-    model_obj, processor = _resolve_ocr(config, adapter, model)
+    if (prompt or "").strip():
+        config.SYSTEM_PROMPT = prompt.strip()
+    model_obj, processor = _resolve_ocr(config, adapter, model, zero_shot)
     try:
         suf = Path(file_path).suffix.lower()
         if suf == ".pdf":
@@ -143,15 +152,31 @@ def ocr_file_ui(file_path, adapter, model):
 
 # ---------------- Eval ----------------
 
-def eval_ui(num_test, adapter, model):
-    """Chạy eval_ocr.py, log realtime."""
+def eval_ui(num_test, adapter, model, zero_shot=False, prompt="", few_shot=0, retrieval_index=""):
+    """Chạy eval_ocr.py, log realtime. zero_shot=True -> --no-adapter."""
     _free_gpu()
     cmd = [sys.executable, str(SCRIPT / "eval_ocr.py"), "--num-test", str(int(num_test))]
-    if adapter and adapter.strip():
+    if zero_shot:
+        cmd += ["--no-adapter"]
+    elif adapter and adapter.strip():
         cmd += ["--adapter", adapter.strip()]
     if model and model.strip():
         cmd += ["--model", model.strip()]
+    if prompt and prompt.strip():
+        cmd += ["--prompt", prompt.strip()]
+    if few_shot and int(few_shot) > 0:
+        cmd += ["--few-shot", str(int(few_shot))]
+    if retrieval_index and retrieval_index.strip():
+        cmd += ["--retrieval-index", retrieval_index.strip()]
     yield from _run(cmd)
+
+
+def build_index_ui(pool, seed):
+    """Xây index retrieval (CLIP) cho few-shot theo style ảnh."""
+    _free_gpu()
+    cmd = [sys.executable, str(SCRIPT / "build_retrieval_index.py"),
+           "--pool", str(int(pool)), "--seed", str(int(seed))]
+    yield from _run(cmd, "> build_retrieval_index.py\n")
 
 
 # ---------------- Export ----------------
@@ -165,6 +190,29 @@ def export_ui(adapter, model):
     if model and model.strip():
         cmd += ["--model", model.strip()]
     yield from _run(cmd)
+
+
+def pack_zeroshot_ui(model, push, ollama_repo):
+    """Đóng gói base ZERO-SHOT (không train) -> GGUF+mmproj -> Ollama; tùy chọn push.
+
+    Chạy scripts/pack_zeroshot_ollama.sh (cần Linux/Colab để build llama.cpp).
+    """
+    if sys.platform == "win32":
+        yield "Đóng gói Ollama cần Linux/Colab (build llama.cpp) — không chạy trên Windows."
+        return
+    env = os.environ.copy()
+    if model and model.strip():
+        env["MODEL_NAME"] = model.strip()
+    if push:
+        repo = (ollama_repo or "").strip()
+        if "/" not in repo:
+            yield "Nhập Ollama repo dạng `user/ten-model` để push."
+            return
+        env["PUSH"] = "1"
+        env["OLLAMA_REPO"] = repo
+    _free_gpu()
+    cmd = ["bash", str(SCRIPT / "pack_zeroshot_ollama.sh")]
+    yield from _run(cmd, "> pack_zeroshot_ollama.sh (zero-shot, KHÔNG train)\n", env=env)
 
 
 def _latest_gguf():
@@ -248,7 +296,7 @@ def _default_ollama_name():
     """Tên model Ollama gợi ý từ file gguf mới nhất (bỏ hậu tố quant)."""
     gguf = _latest_gguf()
     if not gguf:
-        return "qwen25vl-3b-vi-hwr"
+        return "qwen25vl-7b-vi-hwr"
     stem = Path(gguf).stem
     for suf in ("-Q6_K", "-Q4_K_M", "-Q4_0", "-Q8_0", "-f16"):
         if stem.endswith(suf):
@@ -292,6 +340,27 @@ def import_ollama_ui(model_name):
     yield (log, f"✅ Xong — test: `ollama run {name} \"Đọc chữ trong ảnh\" -- /path/to/anh.jpg`")
 
 
+def push_ollama_ui(model_name, ollama_repo):
+    """Push 1 model local lên Ollama registry (ollama.com). Cần `ollama login` trước."""
+    repo = (ollama_repo or "").strip()
+    if "/" not in repo:
+        yield "Nhập Ollama repo dạng `user/ten-model` (vd `username/qwen25vl-7b-vi-hwr-20k-lora`)."
+        return
+    if shutil.which("ollama") is None:
+        yield ("Chưa có Ollama CLI — cài tại https://ollama.com/download "
+               "(Colab: curl -fsSL https://ollama.com/install.sh | sh).")
+        return
+    name = (model_name or "").strip() or repo
+    log = ""
+    if name != repo:
+        for chunk in _run(["ollama", "cp", name, repo], f"> ollama cp {name} {repo}\n"):
+            log = chunk
+    for chunk in _run(["ollama", "push", repo], log + f"> ollama push {repo}\n"):
+        log = chunk
+        yield log + "\n⏳ Đang push lên Ollama registry (cần `ollama login` trước)..."
+    yield log + f"\n✅ Đã push. Người khác: ollama pull {repo}"
+
+
 def push_gguf_ui(hub_repo):
     """Push file .gguf mới nhất lên Hugging Face Hub để có link tải nhanh/ổn định."""
     hub_repo = (hub_repo or "").strip()
@@ -333,7 +402,7 @@ def push_adapter_ui(hub_repo, adapter):
     """Push thư mục adapter local lên Hugging Face Hub."""
     hub_repo = (hub_repo or "").strip()
     if "/" not in hub_repo:
-        return "Nhập repo id dạng `owner/repo` (vd `username/qwen25vl-3b-vi-hwr-lora`)."
+        return "Nhập repo id dạng `owner/repo` (vd `username/qwen25vl-7b-vi-hwr-lora`)."
     config = Configs()
     if not config.HF_TOKEN:
         return "Chưa có HF_TOKEN — sang tab Settings lưu token trước."
@@ -516,9 +585,15 @@ def build_app():
                                         label="Base model", allow_custom_value=True)
                 adapter_in = gr.Textbox(value=str(cfg.ADAPTER_DIR), label="Adapter (đường dẫn hoặc owner/repo)")
             ocr_model.change(sync_adapter, inputs=[ocr_model, adapter_in], outputs=adapter_in)
+            with gr.Row():
+                ocr_zeroshot = gr.Checkbox(
+                    value=False, label="Zero-shot (base, KHÔNG adapter)")
+                ocr_prompt = gr.Textbox(
+                    label="Prompt tùy biến (để trống = mặc định)", scale=3)
             ocr_btn = gr.Button("🔍 OCR", variant="primary")
             ocr_out = gr.Textbox(label="Kết quả")
-            ocr_btn.click(ocr_ui, inputs=[image, adapter_in, ocr_model], outputs=ocr_out)
+            ocr_btn.click(ocr_ui, inputs=[image, adapter_in, ocr_model, ocr_zeroshot, ocr_prompt],
+                          outputs=ocr_out)
 
             gr.Markdown("### 📄 OCR file nhiều trang (PDF scan / Word .docx / ảnh)")
             pdf_in = gr.File(
@@ -528,7 +603,8 @@ def build_app():
             pdf_btn = gr.Button("🔍 OCR file", variant="primary")
             pdf_out = gr.Textbox(label="Kết quả (gộp theo trang/ảnh)", lines=20, max_lines=30,
                                  autoscroll=True, elem_classes=["log-scroll"])
-            pdf_btn.click(ocr_file_ui, inputs=[pdf_in, adapter_in, ocr_model], outputs=pdf_out)
+            pdf_btn.click(ocr_file_ui, inputs=[pdf_in, adapter_in, ocr_model, ocr_zeroshot, ocr_prompt],
+                          outputs=pdf_out)
 
         with gr.Tab("Eval CER/WER"):
             gr.Markdown(
@@ -551,9 +627,28 @@ def build_app():
                 eval_model = gr.Dropdown(choices=MODEL_CHOICES, value=cfg.MODEL_NAME,
                                          label="Base model", allow_custom_value=True)
             eval_model.change(sync_adapter, inputs=[eval_model, eval_adapter], outputs=eval_adapter)
+            with gr.Row():
+                eval_zeroshot = gr.Checkbox(
+                    value=False, label="Zero-shot (base, KHÔNG adapter)")
+                eval_prompt = gr.Textbox(
+                    label="Prompt tùy biến (để trống = mặc định)", scale=3)
+            with gr.Row():
+                eval_fewshot = gr.Slider(minimum=0, maximum=8, value=0, step=1,
+                                         label="Few-shot K (0 = tắt)")
+                eval_retrieval = gr.Textbox(
+                    label="Retrieval index (.npz — để trống = mẫu ngẫu nhiên)", scale=3)
             eval_btn = gr.Button("📊 Eval", variant="primary")
             eval_log = gr.Textbox(label="Log", lines=20, max_lines=30, autoscroll=True, elem_classes=["log-scroll"])
-            eval_btn.click(eval_ui, inputs=[num_test, eval_adapter, eval_model], outputs=eval_log)
+            eval_btn.click(
+                eval_ui,
+                inputs=[num_test, eval_adapter, eval_model, eval_zeroshot, eval_prompt,
+                        eval_fewshot, eval_retrieval],
+                outputs=eval_log)
+            with gr.Row():
+                idx_pool = gr.Number(value=5000, precision=0, label="Số ảnh vào index (pool)")
+                idx_seed = gr.Number(value=42, precision=0, label="Seed")
+            idx_btn = gr.Button("🧲 Xây index retrieval (few-shot theo ảnh)", variant="secondary")
+            idx_btn.click(build_index_ui, inputs=[idx_pool, idx_seed], outputs=eval_log)
 
         with gr.Tab("Export"):
             export_adapter = gr.Textbox(value=str(cfg.ADAPTER_DIR), label="Adapter")
@@ -575,7 +670,7 @@ def build_app():
 
             gr.Markdown("### ⬆ Push GGUF lên Hub (link tải nhanh, ổn định, vĩnh viễn)")
             hub_repo_in = gr.Textbox(label="Repo Hub (owner/repo)",
-                                     placeholder="username/qwen25vl-3b-vi-hwr-gguf")
+                                     placeholder="username/qwen25vl-7b-vi-hwr-gguf")
             push_btn = gr.Button("⬆ Push file .gguf lên Hub", variant="secondary")
             push_msg = gr.Markdown()
             push_btn.click(push_gguf_ui, inputs=[hub_repo_in], outputs=push_msg)
@@ -592,6 +687,31 @@ def build_app():
             import_msg = gr.Markdown()
             import_btn.click(import_ollama_ui, inputs=[ollama_name_in],
                              outputs=[export_log, import_msg])
+
+            gr.Markdown("### ☁️ Push model lên Ollama registry (ollama.com) — chạy `ollama login` trước")
+            with gr.Row():
+                ollama_push_name = gr.Textbox(value=_default_ollama_name(), label="Model local")
+                ollama_push_repo = gr.Textbox(
+                    label="Ollama repo (user/ten-model)",
+                    placeholder="username/qwen25vl-7b-vi-hwr-20k-lora")
+            push_ollama_btn = gr.Button("☁️ Push lên Ollama", variant="secondary")
+            push_ollama_btn.click(push_ollama_ui,
+                                  inputs=[ollama_push_name, ollama_push_repo],
+                                  outputs=export_log)
+
+            gr.Markdown("### 🧊 Đóng gói base ZERO-SHOT → Ollama (không train, không adapter)")
+            gr.Markdown(
+                "Snapshot base → GGUF + mmproj → `ollama create` (bỏ qua merge LoRA). "
+                "Chỉ Linux/Colab. Tick push để người khác `ollama pull` về."
+            )
+            zs_model = gr.Dropdown(choices=MODEL_CHOICES, value=cfg.MODEL_NAME,
+                                   label="Base model", allow_custom_value=True)
+            with gr.Row():
+                zs_push = gr.Checkbox(value=False, label="Push lên Ollama registry")
+                zs_repo = gr.Textbox(label="Ollama repo (user/ten-model)",
+                                     placeholder="username/qwen25vl-7b-vi-ocr")
+            zs_btn = gr.Button("🧊 Đóng gói zero-shot (GGUF+mmproj → Ollama)", variant="secondary")
+            zs_btn.click(pack_zeroshot_ui, inputs=[zs_model, zs_push, zs_repo], outputs=export_log)
 
         with gr.Tab("Settings"):
             tok_status = gr.Markdown(value=token_status())

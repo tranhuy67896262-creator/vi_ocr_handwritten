@@ -6,12 +6,11 @@ from pathlib import Path
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(PROJECT_ROOT))
 
-import torch
 from peft import PeftModel
 from transformers import Qwen2_5_VLForConditionalGeneration
 
 from configs.configs import Configs, _adapter_tag
-from src.modeling.load import load_processor, resolve_attn_implementation
+from src.modeling.load import load_processor, resolve_attn_implementation, resolve_infer_dtype
 from src.utils.logging import log_and_exit, setup_file_logging
 
 
@@ -44,7 +43,7 @@ def main():
         processor = load_processor(config)
         model = Qwen2_5_VLForConditionalGeneration.from_pretrained(
             config.MODEL_NAME,
-            torch_dtype=torch.bfloat16 if torch.cuda.is_bf16_supported() else torch.float16,
+            torch_dtype=resolve_infer_dtype(config),
             device_map="auto",
             attn_implementation=resolve_attn_implementation(config),
             token=config.HF_TOKEN or None,

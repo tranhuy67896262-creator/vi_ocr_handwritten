@@ -12,7 +12,7 @@ cd "$(dirname "$0")/.."
 #   QUANT          loại quantize (mặc định Q6_K; để "none" bỏ qua)
 #   LLAMA_CUBLAS   "ON" để build bản GPU (mặc định CPU — đủ cho convert/quantize)
 
-MERGE_DIR="${1:-models/qwen25vl-3b-vi-hwr-lora-merged}"
+MERGE_DIR="${1:-models/qwen25vl-7b-vi-hwr-lora-merged}"
 OUT_DIR="${2:-models/gguf}"
 LLAMA_CPP="${LLAMA_CPP_DIR:-/content/llama.cpp}"
 QUANT="${QUANT:-Q6_K}"

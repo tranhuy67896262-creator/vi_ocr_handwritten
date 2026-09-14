@@ -35,12 +35,12 @@ class Configs:
     HF_TOKEN = os.getenv("HF_TOKEN", "")
     DATASET_NAME = "5CD-AI/Viet-Handwriting-OCR-v2"
     # CHỈ cần sửa MODEL_NAME khi muốn đổi model (3B/7B/...) — ADAPTER_DIR tự suy ra sau.
-    MODEL_NAME = "Qwen/Qwen2.5-VL-3B-Instruct"
+    MODEL_NAME = "Qwen/Qwen2.5-VL-7B-Instruct"
     PUSH_TO_HUB = False
     HUB_ADAPTER_ID = ""  # Truyền qua CLI: --hub-repo <owner>/<repo>
 
-    # Thư mục adapter tự suy từ MODEL_NAME + precision (3B QLoRA -> qwen25vl-3b-vi-hwr-lora;
-    # bf16 -> qwen25vl-3b-vi-hwr-lora-bf16). Đặt SAU MODEL_NAME vì class body chạy tuần tự.
+    # Thư mục adapter tự suy từ MODEL_NAME + precision (7B QLoRA -> qwen25vl-7b-vi-hwr-lora;
+    # bf16 -> qwen25vl-7b-vi-hwr-lora-bf16). Đặt SAU MODEL_NAME vì class body chạy tuần tự.
     ADAPTER_DIR = adapter_dir(MODELS_DIR, MODEL_NAME, True)
 
     # Prompt hệ thống cho OCR
@@ -101,6 +101,8 @@ class Configs:
 
     # Inference
     MAX_NEW_TOKENS = 256
+    # dtype khi OCR/export: fp16 (mặc định — hợp T4 và mọi GPU) | bf16 | auto (bf16 nếu hỗ trợ).
+    INFER_DTYPE = "fp16"
     PDF_DPI = 200  # DPI render trang PDF scan (khớp file scan thực tế ~200dpi)
     # Số lát cắt mỗi trang A4 scan (PDF/DOCX): chẻ TRƯỚC khi thu nhỏ để mỗi lát
     # giữ chi tiết chữ nhỏ. Chỉ áp dụng khi ảnh lớn (cạnh dài > 1200px).

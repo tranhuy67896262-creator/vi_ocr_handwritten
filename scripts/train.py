@@ -19,7 +19,7 @@ from src.utils.logging import log_and_exit, setup_file_logging
 def main():
     """Parse CLI và chạy train."""
     parser = argparse.ArgumentParser(
-        description="Fine-tune Qwen2.5-VL-3B bằng LoRA/QLoRA trên chữ viết tay Việt"
+        description="Fine-tune Qwen2.5-VL-7B bằng LoRA/QLoRA trên chữ viết tay Việt"
     )
     parser.add_argument("--dataset", type=str, default=None, help="Tên dataset HF (mặc định: từ config)")
     parser.add_argument("--model", type=str, default=None, help="Tên model HF (mặc định: từ config)")
@@ -43,7 +43,7 @@ def main():
                         help="Train LoRA full-precision bf16 (bỏ 4-bit QLoRA; chất lượng nhỉnh hơn nhưng tốn VRAM)")
     parser.add_argument("--push", action="store_true", help="Push adapter lên Hugging Face Hub")
     parser.add_argument("--hub-repo", type=str, default=None, help=(
-        "Tên repo Hub đích khi push, vd: owner/qwen25vl-3b-vi-hwr-lora"))
+        "Tên repo Hub đích khi push, vd: owner/qwen25vl-7b-vi-hwr-lora"))
     args = parser.parse_args()
 
     config = Configs()

@@ -50,7 +50,7 @@ scripts/ui.py             # UI Gradio 5 tab (Fine-tune/OCR/Eval/Export/Settings)
 run_train.sh / run_train.bat  # wrapper setup + chạy (Linux / Windows)
 pipeline_smoke_10.sh      # train 10 ảnh + export + import/test Ollama
 pipeline_train_20k.sh     # train tối đa 5k mặc định, chỉ chạy sau smoke test thành công
-import_models_to_ollama.sh # import các GGUF đã export vào Ollama
+scripts/pack_zeroshot_ollama.sh  # zero-shot: base -> GGUF+mmproj -> Ollama (không train)
 ```
 
 ## Cài đặt
@@ -96,8 +96,8 @@ BATCH_SIZE=2 bash pipeline_smoke_10.sh hf_xxxxx
 # Chỉ chạy sau khi smoke test tạo marker thành công
 BATCH_SIZE=2 bash pipeline_train_20k.sh hf_xxxxx
 
-# Import lại các model GGUF đã tạo (smoke và 20k nếu tồn tại)
-bash import_models_to_ollama.sh
+# Import 1 model GGUF vào Ollama (thư mục chứa file .gguf + Modelfile)
+bash scripts/ollama_create.sh qwen25vl-7b-vi-hwr models/gguf-20k-7b-lora
 ```
 
 Smoke pipeline thực hiện: train 10 ảnh → OCR bằng adapter HF → merge model → convert GGUF + `mmproj` → import Ollama → chạy OCR ảnh test. Pipeline 20k chỉ chạy khi smoke test thành công.

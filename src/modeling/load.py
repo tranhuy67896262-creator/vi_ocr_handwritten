@@ -31,6 +31,16 @@ def resolve_attn_implementation(config):
         return "sdpa"
 
 
+def resolve_infer_dtype(config):
+    """dtype cho inference: 'fp16' (mặc định, hợp T4) | 'bf16' | 'auto' (bf16 nếu GPU hỗ trợ)."""
+    choice = (getattr(config, "INFER_DTYPE", "fp16") or "fp16").lower()
+    if choice == "bf16":
+        return torch.bfloat16
+    if choice == "auto":
+        return torch.bfloat16 if torch.cuda.is_bf16_supported() else torch.float16
+    return torch.float16
+
+
 class PrecisionLoader(ABC):
     """Cách nạp base model theo một mức precision (strategy)."""
 

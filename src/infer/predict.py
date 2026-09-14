@@ -6,7 +6,7 @@ from peft import PeftModel
 from PIL import Image
 from transformers import Qwen2_5_VLForConditionalGeneration
 
-from src.modeling.load import load_processor, resolve_attn_implementation
+from src.modeling.load import load_processor, resolve_attn_implementation, resolve_infer_dtype
 from src.utils.image import standardize_a4
 
 
@@ -21,7 +21,7 @@ def load_ocr_model(config, adapter_dir=None, model_name=None):
     processor = load_processor(config, base)
     model = Qwen2_5_VLForConditionalGeneration.from_pretrained(
         base,
-        torch_dtype=torch.bfloat16 if torch.cuda.is_bf16_supported() else torch.float16,
+        torch_dtype=resolve_infer_dtype(config),
         device_map="auto",
         attn_implementation=resolve_attn_implementation(config),
         token=config.HF_TOKEN or None,
@@ -38,11 +38,36 @@ def load_ocr_model(config, adapter_dir=None, model_name=None):
     return model, processor
 
 
-def predict_image(config, model, processor, image, system_prompt=None):
-    """OCR 1 ảnh PIL -> trả về chuỗi chữ viết tay đọc được."""
+def _prepare_image(config, image):
+    """Chuẩn hóa 1 ảnh PIL (RGB + A4) trước khi đưa vào processor."""
     image = image.convert("RGB")
     if config.A4_STANDARDIZE:
         image = standardize_a4(image, max_pixels=config.MAX_PIXELS)
+    return image
+
+
+def _generate(config, model, processor, messages, images, max_new_tokens=None):
+    """Chạy processor + generate cho 1 hội thoại (hỗ trợ nhiều ảnh)."""
+    text = processor.apply_chat_template(messages, tokenize=False, add_generation_prompt=True)
+    inputs = processor(
+        text=[text], images=images, return_tensors="pt", add_special_tokens=False,
+        min_pixels=config.MIN_PIXELS, max_pixels=config.MAX_PIXELS,
+    )
+    inputs = {k: v.to(model.device) if hasattr(v, "to") else v for k, v in inputs.items()}
+
+    with torch.no_grad():
+        output_ids = model.generate(
+            **inputs,
+            max_new_tokens=max_new_tokens or config.MAX_NEW_TOKENS,
+            do_sample=False,
+            num_beams=1,
+        )
+    output_ids = output_ids[:, inputs["input_ids"].shape[1]:]
+    return processor.batch_decode(output_ids, skip_special_tokens=True)[0].strip()
+
+
+def predict_image(config, model, processor, image, system_prompt=None):
+    """OCR 1 ảnh PIL -> trả về chuỗi chữ viết tay đọc được."""
     messages = [
         {
             "role": "user",
@@ -52,22 +77,40 @@ def predict_image(config, model, processor, image, system_prompt=None):
             ],
         }
     ]
-    text = processor.apply_chat_template(messages, tokenize=False, add_generation_prompt=True)
-    inputs = processor(
-        text=[text], images=[image], return_tensors="pt", add_special_tokens=False,
-        min_pixels=config.MIN_PIXELS, max_pixels=config.MAX_PIXELS,
-    )
-    inputs = {k: v.to(model.device) if hasattr(v, "to") else v for k, v in inputs.items()}
+    return _generate(config, model, processor, messages, [_prepare_image(config, image)])
 
-    with torch.no_grad():
-        output_ids = model.generate(
-            **inputs,
-            max_new_tokens=config.MAX_NEW_TOKENS,
-            do_sample=False,
-            num_beams=1,
-        )
-    output_ids = output_ids[:, inputs["input_ids"].shape[1]:]
-    return processor.batch_decode(output_ids, skip_special_tokens=True)[0].strip()
+
+# Prompt ngắn cho mỗi lượt exemplar trong few-shot (lặp lại cho từng ví dụ).
+FEWSHOT_EXEMPLAR_PROMPT = "Đọc chính xác văn bản trong ảnh, chỉ trả về văn bản."
+
+
+def predict_image_fewshot(config, model, processor, image, exemplars,
+                          system_prompt=None, max_new_tokens=None):
+    """OCR 1 ảnh với few-shot in-context.
+
+    ``exemplars`` = list[(ảnh PIL, văn bản)] — chèn K cặp ảnh→text rồi mới tới ảnh
+    query, tất cả trong 1 prompt đa ảnh. KHÔNG cập nhật trọng số.
+    """
+    query_prompt = system_prompt or config.SYSTEM_PROMPT
+    messages = []
+    images = []
+    for ex_image, ex_text in exemplars:
+        messages.append({
+            "role": "user",
+            "content": [{"type": "image"},
+                        {"type": "text", "text": FEWSHOT_EXEMPLAR_PROMPT}],
+        })
+        messages.append({
+            "role": "assistant",
+            "content": [{"type": "text", "text": str(ex_text)}],
+        })
+        images.append(_prepare_image(config, ex_image))
+    messages.append({
+        "role": "user",
+        "content": [{"type": "image"}, {"type": "text", "text": query_prompt}],
+    })
+    images.append(_prepare_image(config, image))
+    return _generate(config, model, processor, messages, images, max_new_tokens=max_new_tokens)
 
 
 def render_pdf_pages(pdf_path, dpi=200):
