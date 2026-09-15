@@ -68,6 +68,7 @@ def init_db(db_path):
 
 def add_run(db_path, record):
     """Thêm 1 dòng lịch sử. ``record`` là dict, key khớp ``RUN_FIELDS``."""
+    init_db(db_path)
     record = dict(record)
     record.setdefault("created_at", datetime.now().isoformat(timespec="seconds"))
     cols = [f for f in RUN_FIELDS if f in record]
