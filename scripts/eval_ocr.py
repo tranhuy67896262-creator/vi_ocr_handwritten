@@ -6,7 +6,6 @@ from pathlib import Path
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(PROJECT_ROOT))
 
-from datasets import load_dataset
 from jiwer import cer, wer
 from PIL import Image
 
@@ -88,6 +87,8 @@ def main():
                         help="Base model (mặc định: từ config) — phải cùng họ với adapter")
     parser.add_argument("--adapter", type=str, default=None,
                         help="Thư mục LoRA adapter hoặc repo id trên Hub (vd owner/repo); mặc định: từ config")
+    parser.add_argument("--adapter-revision", type=str, default=None,
+                        help="Revision/branch của adapter trên Hub (vd stage-5k)")
     parser.add_argument("--dataset", type=str, default=None,
                         help="Tên dataset HF để đánh giá (mặc định: từ config)")
     parser.add_argument("--num-test", type=int, default=100, help="Số mẫu đánh giá trên test split")
@@ -133,7 +134,8 @@ def main():
 
     try:
         model, processor = load_ocr_model(config, adapter_dir, args.model,
-                                          load_4bit=args.load_4bit)
+                                          load_4bit=args.load_4bit,
+                                          adapter_revision=args.adapter_revision)
     except Exception as exc:
         hint = ("Kiểm tra kết nối mạng/HF_TOKEN và tên base model."
                 if adapter_dir is None else
@@ -183,11 +185,15 @@ def main():
         return
 
     try:
-        ds = load_dataset(config.DATASET_NAME, split=config.TEST_SPLIT, token=config.HF_TOKEN or None)
-    except Exception:
-        ds = load_dataset("5CD-AI/Viet-Handwriting-OCR-v2", split=config.TEST_SPLIT, token=config.HF_TOKEN or None)
+        ds = load_dataset_with_fallback(config, config.TEST_SPLIT)
+    except Exception as exc:
+        log_and_exit(exc, stage="DATASET",
+                     extra_hint="Kiểm tra HF_TOKEN và tên dataset (cần split test để đo CER/WER).")
 
-    ds = ds.select(range(min(args.num_test, len(ds))))
+    # Chọn eval subset GIỐNG lúc train (shuffle seed cố định) -> CER giữa các mốc
+    # staged training so sánh được (cùng đúng một tập mẫu, không phải N dòng đầu).
+    seed = getattr(config, "EVAL_SHUFFLE_SEED", config.SEED)
+    ds = ds.shuffle(seed=seed).select(range(min(args.num_test, len(ds))))
     image_col, text_col = detect_columns(ds)
     mode = "zero-shot" if k <= 0 else (f"retrieval-{k}shot" if retriever else f"few-{k}shot")
     print(f"Eval {len(ds)} mẫu | chế độ: {mode}")

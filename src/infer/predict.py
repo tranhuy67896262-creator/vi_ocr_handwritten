@@ -9,10 +9,12 @@ from transformers import Qwen2_5_VLForConditionalGeneration
 from src.modeling.load import load_processor, resolve_attn_implementation, resolve_infer_dtype
 
 
-def load_ocr_model(config, adapter_dir=None, model_name=None, load_4bit=False):
+def load_ocr_model(config, adapter_dir=None, model_name=None, load_4bit=False,
+                   adapter_revision=None):
     """Load model gốc + LoRA adapter để OCR.
 
     adapter_dir có thể là đường dẫn local hoặc repo id trên HF Hub (vd 'owner/repo').
+    adapter_revision: branch/revision trên Hub (vd 'stage-5k') khi adapter_dir là repo id.
     model_name là base model (mặc định config.MODEL_NAME) — PHẢI cùng họ với adapter
     (adapter 3B + base 7B sẽ lỗi shape).
     load_4bit=True: nạp base 4-bit NF4 (bitsandbytes) để vừa GPU nhỏ (vd T4 15GB).
@@ -48,8 +50,11 @@ def load_ocr_model(config, adapter_dir=None, model_name=None, load_4bit=False):
             raise ValueError(
                 f"Không thấy adapter '{adapter_dir}'. Truyền đường dẫn local hoặc repo id dạng 'owner/repo'."
             )
-        print(f"Load adapter từ: {adapter_dir}")
-        model = PeftModel.from_pretrained(model, adapter_dir, token=config.HF_TOKEN or None)
+        suffix = f"@{adapter_revision}" if adapter_revision else ""
+        print(f"Load adapter từ: {adapter_dir}{suffix}")
+        model = PeftModel.from_pretrained(
+            model, adapter_dir, revision=adapter_revision, token=config.HF_TOKEN or None
+        )
     model.eval()
     return model, processor
 

@@ -54,19 +54,25 @@ class Configs:
     TEST_SPLIT = "test"
     VAL_RATIO = 0.002
     MIN_PIXELS = 256 * 28 * 28
-    # 768 tile 28x28 ~= 768 image-token: vừa khung MAX_SEQ_LEN=1024 (cả text).
-    # Để 1280 như trước → image-token đã ~1456, truncation cắt vào vùng ảnh
-    # gây crash "Mismatch in image token count" + train chậm (50s+/it).
-    MAX_PIXELS = 768 * 28 * 28
+    # 1280 tile 28x28 ~= 1280 image-token. Dataset 5CD-AI là ảnh crop DÒNG nên độ
+    # phân giải là nút cổ chai của dấu thanh — 768 (bản cũ) làm mất dấu. Đổi lại
+    # phải nâng MAX_SEQ_LEN lên 1536 để chứa đủ image-token + text.
+    MAX_PIXELS = 1280 * 28 * 28
+    # Shuffle cố định trước khi cắt N mẫu: 5 mốc (5k/10k/20k/40k/59k) vẫn LỒNG NHAU
+    # (cùng permutation) nhưng không còn lấy N dòng đầu theo thứ tự parquet.
+    DATA_SHUFFLE_SEED = 42
+    # Eval cố định lấy từ TEST_SPLIT -> mọi mốc đo cùng một thước (so CER/WER được).
+    EVAL_SAMPLES = 300
+    EVAL_SHUFFLE_SEED = 42
 
     # Training (QLoRA: giữ nguyên kiến thức model gốc)
     NUM_EPOCHS = 1
-    BATCH_SIZE = 2
-    GRADIENT_ACCUMULATION_STEPS = 8
-    LEARNING_RATE = 2e-5
+    BATCH_SIZE = 4
+    GRADIENT_ACCUMULATION_STEPS = 4  # effective batch = 16 (giữ ~8.4k step cho 5 mốc)
+    LEARNING_RATE = 1e-4
     LR_SCHEDULER = "cosine"
     WARMUP_RATIO = 0.03
-    MAX_SEQ_LEN = 1024
+    MAX_SEQ_LEN = 1536
     GRADIENT_CHECKPOINTING = True
     # Colab/Linux: nạp ảnh và chạy processor song song, giảm thời gian GPU chờ batch.
     DATALOADER_NUM_WORKERS = 4
@@ -77,14 +83,15 @@ class Configs:
 
     # Chống mất kiến thức gốc: cộng KL-divergence(model gốc || model LoRA) vào loss.
     # Model gốc = forward cùng batch với LoRA tạm tắt (disable_adapter), không tốn thêm model copy.
-    # Tắt (False) nếu VRAM hẹp — tốn thêm 1 forward no_grad mỗi step.
-    KL_REGULARIZATION = True
+    # MẶC ĐỊNH TẮT cho OCR chuyên dụng: KL kéo phân phối đáp án về base model — chính
+    # cái đang đọc sai dấu — nên nó chống lại việc cần học. Bật lại bằng cờ `--kl`.
+    KL_REGULARIZATION = False
     KL_COEFFICIENT = 0.5
 
     # LoRA
     USE_4BIT = True
-    LORA_R = 32
-    LORA_ALPHA = 64
+    LORA_R = 64
+    LORA_ALPHA = 128
     LORA_DROPOUT = 0.05
     LORA_TARGET_MODULES = [
         "q_proj", "k_proj", "v_proj", "o_proj",
@@ -107,6 +114,11 @@ class Configs:
     # giữ chi tiết chữ nhỏ. Chỉ áp dụng khi ảnh lớn (cạnh dài > 1200px).
     PAGE_TILES = 2
     ATTN_IMPLEMENTATION = "auto"  # auto: flash_attention_2 nếu có (Linux/GPU lớn), nếu không sdpa
+
+    # Staged training (cumulative): 5 mốc chia 59,247 dòng train, chạy bằng
+    # `bash scripts/train_stages.sh`. Mỗi mốc train tiếp từ adapter mốc trước
+    # (--init-adapter), eval cùng tập cố định rồi push 1 revision riêng lên Hub.
+    STAGE_SAMPLES = (5000, 10000, 20000, 40000, 59247)
 
     def __init__(self):
         """Tạo thư mục nếu chưa tồn tại"""

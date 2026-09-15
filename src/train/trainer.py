@@ -5,7 +5,7 @@ from datetime import datetime
 from pathlib import Path
 
 import torch
-from transformers import Trainer, TrainingArguments
+from transformers import Trainer, TrainerCallback, TrainingArguments
 
 from src.datasets.collator import DataCollatorForQwenVL
 from src.train.kl_trainer import KLLoRATrainer
@@ -13,6 +13,42 @@ from src.utils.logging import setup_file_logging
 
 # Optimizer theo precision (OCP: thêm mode mới chỉ cần mở rộng mapping).
 OPTIMIZER_BY_4BIT = {True: "paged_adamw_8bit", False: "adamw_torch"}
+
+
+class PushOnSaveCallback(TrainerCallback):
+    """Push adapter lên Hub mỗi lần Trainer lưu checkpoint (run dài, mốc dài).
+
+    Bật bằng ``push_every_save=True`` — chặn mất kết quả khi Colab hết session giữa run.
+    """
+
+    def __init__(self, repo_id, token=None, revision=None):
+        self.repo_id = repo_id
+        self.token = token or None
+        self.revision = revision
+
+    def on_save(self, args, state, control, **kwargs):
+        """Đẩy adapter hiện tại lên Hub ở cuối mỗi lần save."""
+        model = kwargs.get("model")
+        if model is None or not state.is_world_process_zero:
+            return control
+        model.push_to_hub(self.repo_id, token=self.token, revision=self.revision)
+        suffix = f"@{self.revision}" if self.revision else ""
+        print(f"Đã push checkpoint (step {state.global_step}) -> {self.repo_id}{suffix}")
+        return control
+
+
+def ensure_hub_branch(config, hub_repo_id, hub_revision):
+    """Tạo branch trên Hub nếu chưa có (push_to_hub commit thẳng vào revision đó)."""
+    if not hub_revision:
+        return
+    try:
+        from huggingface_hub import HfApi
+        HfApi().create_branch(
+            hub_repo_id, branch=hub_revision, repo_type="model",
+            exist_ok=True, token=config.HF_TOKEN or None,
+        )
+    except Exception as err:  # noqa: BLE001
+        print(f"  [WARN] Không tạo được branch '{hub_revision}': {err}")
 
 
 def get_training_args(config, output_dir, use_4bit, num_train_steps=None):
@@ -63,12 +99,20 @@ def _latest_checkpoint(checkpoints_dir):
 
 
 def train(config, model, processor, train_ds, eval_ds=None, push=False, hub_repo_id="",
-          use_4bit=None, resume=False, save_steps=None):
-    """Train LoRA, lưu adapter + metadata (push Hub nếu cần)."""
+          use_4bit=None, resume=False, save_steps=None, hub_revision=None,
+          run_name=None, push_every_save=False, init_adapter=None):
+    """Train LoRA, lưu adapter + metadata (push Hub nếu cần).
+
+    ``run_name`` TÁCH thư mục checkpoint theo mốc (``models/checkpoints/<run_name>``)
+    để ``--resume`` giữa các mốc staged training không lẫn vào nhau.
+    ``hub_revision`` commit kết quả vào một branch riêng (vd ``stage-5k``) thay vì đè
+    ``main`` — giữ được cả 5 adapter của 5 mốc.
+    """
     if use_4bit is None:
         use_4bit = config.USE_4BIT
     if save_steps is not None:
         config.SAVE_STEPS = save_steps
+    run_name = run_name or "default"
     log_path = config.MODELS_DIR / "training.log"
     setup_file_logging(log_path)
 
@@ -83,7 +127,8 @@ def train(config, model, processor, train_ds, eval_ds=None, push=False, hub_repo
     if train_ds is not None:
         steps_per_epoch = math.ceil(len(train_ds) / eff_batch)
         num_train_steps = steps_per_epoch * config.NUM_EPOCHS
-    args = get_training_args(config, config.MODELS_DIR / "checkpoints", use_4bit, num_train_steps)
+    ckpt_dir = config.MODELS_DIR / "checkpoints" / run_name
+    args = get_training_args(config, ckpt_dir, use_4bit, num_train_steps)
 
     trainer_cls = KLLoRATrainer if config.KL_REGULARIZATION else Trainer
     trainer_kwargs = {
@@ -95,10 +140,15 @@ def train(config, model, processor, train_ds, eval_ds=None, push=False, hub_repo
     }
     if trainer_cls is KLLoRATrainer:
         trainer_kwargs["kl_coef"] = config.KL_COEFFICIENT
+    if push and push_every_save and hub_repo_id:
+        ensure_hub_branch(config, hub_repo_id, hub_revision)
+        trainer_kwargs["callbacks"] = [
+            PushOnSaveCallback(hub_repo_id, config.HF_TOKEN, hub_revision)
+        ]
     trainer = trainer_cls(**trainer_kwargs)
     resume_path = None
     if resume:
-        resume_path = _latest_checkpoint(config.MODELS_DIR / "checkpoints")
+        resume_path = _latest_checkpoint(ckpt_dir)
         if resume_path:
             print(f"Tiếp tục từ checkpoint: {resume_path}")
         else:
@@ -110,8 +160,10 @@ def train(config, model, processor, train_ds, eval_ds=None, push=False, hub_repo
     processor.save_pretrained(config.ADAPTER_DIR)
     print(f"Đã lưu LoRA adapter vào: {config.ADAPTER_DIR}")
 
-    _save_training_metadata(config, train_ds, eval_ds, trainer, use_4bit)
-    _append_log_summary(config, log_path, train_ds, eval_ds, trainer)
+    _save_training_metadata(config, train_ds, eval_ds, trainer, use_4bit,
+                            run_name=run_name, init_adapter=init_adapter,
+                            hub_revision=hub_revision)
+    _append_log_summary(config, log_path, train_ds, eval_ds, trainer, run_name=run_name)
 
     if push:
         if not hub_repo_id:
@@ -119,14 +171,17 @@ def train(config, model, processor, train_ds, eval_ds=None, push=False, hub_repo
                 "Chưa có tên repo Hub để push. "
                 "Truyền --hub-repo <owner>/<repo> (repo sẽ được tạo mới nếu chưa tồn tại)."
             )
-        model.push_to_hub(hub_repo_id, token=config.HF_TOKEN)
-        processor.push_to_hub(hub_repo_id, token=config.HF_TOKEN)
-        print(f"Đã push adapter lên Hub: {hub_repo_id}")
+        ensure_hub_branch(config, hub_repo_id, hub_revision)
+        model.push_to_hub(hub_repo_id, token=config.HF_TOKEN, revision=hub_revision)
+        processor.push_to_hub(hub_repo_id, token=config.HF_TOKEN, revision=hub_revision)
+        suffix = f" (revision '{hub_revision}')" if hub_revision else ""
+        print(f"Đã push adapter lên Hub: {hub_repo_id}{suffix}")
 
     return config.ADAPTER_DIR
 
 
-def _save_training_metadata(config, train_ds, eval_ds, trainer, use_4bit):
+def _save_training_metadata(config, train_ds, eval_ds, trainer, use_4bit,
+                            run_name="default", init_adapter=None, hub_revision=None):
     """Ghi lại số liệu training (đã train bao nhiêu data, cấu hình gì) vào JSON."""
     train_samples = len(train_ds) if train_ds is not None else 0
     eval_samples = len(eval_ds) if eval_ds is not None else 0
@@ -139,6 +194,10 @@ def _save_training_metadata(config, train_ds, eval_ds, trainer, use_4bit):
         "train_samples": train_samples,
         "eval_samples": eval_samples,
         "train_steps": global_step,
+        "run_name": run_name,
+        "init_adapter": init_adapter or "",
+        "hub_revision": hub_revision or "",
+        "max_pixels": config.MAX_PIXELS,
         "num_epochs": config.NUM_EPOCHS,
         "batch_size": config.BATCH_SIZE,
         "gradient_accumulation_steps": config.GRADIENT_ACCUMULATION_STEPS,
@@ -164,14 +223,14 @@ def _save_training_metadata(config, train_ds, eval_ds, trainer, use_4bit):
     return metadata
 
 
-def _append_log_summary(config, log_path, train_ds, eval_ds, trainer):
+def _append_log_summary(config, log_path, train_ds, eval_ds, trainer, run_name="default"):
     """Append 1 dòng tổng kết mỗi lần train vào file .log (giữ lịch sử nhiều run)."""
     train_samples = len(train_ds) if train_ds is not None else 0
     eval_samples = len(eval_ds) if eval_ds is not None else 0
     global_step = getattr(getattr(trainer, "state", None), "global_step", 0)
 
     line = (
-        f"[{datetime.now().isoformat(timespec='seconds')}] "
+        f"[{datetime.now().isoformat(timespec='seconds')}] run={run_name} "
         f"train={train_samples} eval={eval_samples} steps={global_step} "
         f"epochs={config.NUM_EPOCHS} lr={config.LEARNING_RATE} "
         f"lora_r={config.LORA_R} lora_alpha={config.LORA_ALPHA} "

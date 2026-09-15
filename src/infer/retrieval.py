@@ -5,6 +5,7 @@ Dùng cho Phase 3: với mỗi ảnh query, chọn K ảnh mẫu gần nhất tr
 """
 import json
 from pathlib import Path
+from typing import Any
 
 import numpy as np
 import torch
@@ -57,7 +58,7 @@ class ImageIndex:
         self.refs = np.asarray(refs, dtype="int64")
         self.meta = dict(meta or {})
         self.backend = "numpy"
-        self._faiss_index = None
+        self._faiss_index: Any = None
         if use_faiss and _HAS_FAISS and self.embeddings.ndim == 2 and len(self.refs):
             try:
                 index = faiss.IndexFlatIP(self.embeddings.shape[1])

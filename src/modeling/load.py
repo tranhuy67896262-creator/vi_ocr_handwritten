@@ -4,9 +4,10 @@ Chọn mức precision theo *strategy* (OCP): thêm mode mới (vd 8-bit) chỉ 
 một ``PrecisionLoader`` rồi đăng ký, không sửa luồng load chính.
 """
 from abc import ABC, abstractmethod
+from pathlib import Path
 
 import torch
-from peft import LoraConfig, get_peft_model, prepare_model_for_kbit_training
+from peft import LoraConfig, PeftModel, get_peft_model, prepare_model_for_kbit_training
 from transformers import BitsAndBytesConfig, Qwen2_5_VLForConditionalGeneration, Qwen2_5_VLProcessor
 
 
@@ -146,17 +147,41 @@ def load_model_and_processor(config):
     return model, processor, loader.uses_4bit
 
 
-def build_lora_model(config, model):
-    """Gắn LoRA adapter lên model. Chỉ adapter được train, base model đóng băng."""
-    peft_config = LoraConfig(
-        r=config.LORA_R,
-        lora_alpha=config.LORA_ALPHA,
-        lora_dropout=config.LORA_DROPOUT,
-        target_modules=config.LORA_TARGET_MODULES,
-        bias="none",
-        task_type="CAUSAL_LM",
-    )
-    model = get_peft_model(model, peft_config)
+def build_lora_model(config, model, init_adapter=None, adapter_revision=None):
+    """Gắn LoRA adapter lên model. Chỉ adapter được train, base model đóng băng.
+
+    ``init_adapter`` (đường dẫn local hoặc repo id ``owner/repo``): nạp TRỌNG SỐ của
+    adapter đã train trước đó rồi train tiếp — dùng cho staged training
+    (5k -> 10k -> ...). Khác ``--resume``: cái đó khôi phục cả optimizer + step, còn
+    đây chỉ lấy trọng số nên LR/step reset về 0.
+
+    Khi có ``init_adapter``, ``r``/``alpha``/``target_modules`` lấy theo adapter cũ
+    nên ``--lora-r``/``--lora-alpha`` bị bỏ qua.
+    """
+    if init_adapter:
+        if not Path(init_adapter).exists() and "/" not in str(init_adapter):
+            raise ValueError(
+                f"Không thấy adapter '{init_adapter}'. Truyền đường dẫn local hoặc repo id 'owner/repo'."
+            )
+        model = PeftModel.from_pretrained(
+            model,
+            init_adapter,
+            revision=adapter_revision,
+            is_trainable=True,
+            token=config.HF_TOKEN or None,
+        )
+        suffix = f"@{adapter_revision}" if adapter_revision else ""
+        print(f"Tiếp tục train từ adapter: {init_adapter}{suffix}")
+    else:
+        peft_config = LoraConfig(
+            r=config.LORA_R,
+            lora_alpha=config.LORA_ALPHA,
+            lora_dropout=config.LORA_DROPOUT,
+            target_modules=config.LORA_TARGET_MODULES,
+            bias="none",
+            task_type="CAUSAL_LM",
+        )
+        model = get_peft_model(model, peft_config)
     if config.GRADIENT_CHECKPOINTING:
         model.enable_input_require_grads()
     model.print_trainable_parameters()

@@ -38,12 +38,29 @@ def main():
     parser.add_argument("--save-steps", type=int, default=None,
                         help="Lưu checkpoint mỗi N steps (mặc định: từ config; run dài nên để ~100)")
     parser.add_argument("--no-kl", action="store_true",
-                        help="Tắt KL-regularization (chống mất kiến thức) để tiết kiệm VRAM")
+                        help="Tắt KL-regularization (mặc định đã tắt cho OCR chuyên dụng)")
+    parser.add_argument("--kl", action="store_true",
+                        help="Bật lại KL-regularization (chống mất kiến thức gốc)")
     parser.add_argument("--no-4bit", action="store_true",
                         help="Train LoRA full-precision bf16 (bỏ 4-bit QLoRA; chất lượng nhỉnh hơn nhưng tốn VRAM)")
+    parser.add_argument("--max-pixels", type=int, default=None,
+                        help="Trần pixel mỗi ảnh (mặc định: từ config — tăng để giữ chi tiết dấu)")
+    parser.add_argument("--eval-samples", type=int, default=None,
+                        help="Số mẫu eval cố định lấy từ TEST_SPLIT (mặc định: từ config; 0 = tắt)")
+    parser.add_argument("--run-name", type=str, default=None,
+                        help="Tên run, tách thư mục checkpoint (mặc định: stage-<N> hoặc 'full')")
     parser.add_argument("--push", action="store_true", help="Push adapter lên Hugging Face Hub")
     parser.add_argument("--hub-repo", type=str, default=None, help=(
         "Tên repo Hub đích khi push, vd: owner/qwen25vl-7b-vi-hwr-lora"))
+    parser.add_argument("--hub-revision", type=str, default=None, help=(
+        "Branch/revision để push (vd: stage-5k) — giữ riêng từng mốc thay vì đè 'main'"))
+    parser.add_argument("--push-every-save", action="store_true",
+                        help="Push lên Hub mỗi lần lưu checkpoint (định kỳ trong run dài)")
+    parser.add_argument("--init-adapter", type=str, default=None, help=(
+        "Adapter đã train (đường dẫn local hoặc owner/repo) để TRAIN TIẾP — dùng cho "
+        "staged training 5k->10k->...  (khác --resume: chỉ lấy trọng số, LR/step reset)"))
+    parser.add_argument("--adapter-revision", type=str, default=None,
+                        help="Revision của --init-adapter trên Hub (vd: stage-5k)")
     args = parser.parse_args()
 
     config = Configs()
@@ -66,10 +83,16 @@ def main():
         config.LORA_R = args.lora_r
     if args.lora_alpha is not None:
         config.LORA_ALPHA = args.lora_alpha
+    if args.kl:
+        config.KL_REGULARIZATION = True
     if args.no_kl:
         config.KL_REGULARIZATION = False
     if args.no_4bit:
         config.USE_4BIT = False
+    if args.max_pixels is not None:
+        config.MAX_PIXELS = args.max_pixels
+    if args.eval_samples is not None:
+        config.EVAL_SAMPLES = args.eval_samples
     if args.hub_repo:
         config.HUB_ADAPTER_ID = args.hub_repo
 
@@ -78,11 +101,20 @@ def main():
     config.ADAPTER_DIR = adapter_dir(config.MODELS_DIR, config.MODEL_NAME, config.USE_4BIT)
     config.ADAPTER_DIR.mkdir(parents=True, exist_ok=True)
 
+    # Tên run tách thư mục checkpoint: mốc staged (--max-samples N) -> 'stage-N'.
+    run_name = args.run_name or (f"stage-{args.max_samples}" if args.max_samples else "full")
+
     print(f"Dataset: {config.DATASET_NAME}")
     print(f"Model:   {config.MODEL_NAME}")
     precision = "4-bit QLoRA" if config.USE_4BIT else "bf16 LoRA (full-precision)"
     print(f"Precision: {precision} | R={config.LORA_R} alpha={config.LORA_ALPHA}"
           f" | lr={config.LEARNING_RATE} | epochs={config.NUM_EPOCHS}")
+    print(f"Run: {run_name} | samples={args.max_samples or 'all'}"
+          f" | eval={config.EVAL_SAMPLES} | max_pixels={config.MAX_PIXELS}"
+          f" | seq={config.MAX_SEQ_LEN} | KL={'bật' if config.KL_REGULARIZATION else 'tắt'}")
+    if args.init_adapter:
+        suffix = f"@{args.adapter_revision}" if args.adapter_revision else ""
+        print(f"Train tiếp từ adapter: {args.init_adapter}{suffix}")
 
     try:
         train_ds, eval_ds = build_train_eval_datasets(config, max_samples=args.max_samples)
@@ -94,14 +126,16 @@ def main():
 
     try:
         model, processor, use_4bit = load_model_and_processor(config)
-        model = build_lora_model(config, model)
+        model = build_lora_model(config, model, args.init_adapter, args.adapter_revision)
     except Exception as exc:
         log_and_exit(exc, stage="MODEL", extra_hint="Kiểm tra kết nối mạng, HF_TOKEN, tên model.")
 
     try:
         train(config, model, processor, train_ds, eval_ds,
               push=args.push or config.PUSH_TO_HUB, hub_repo_id=config.HUB_ADAPTER_ID,
-              use_4bit=use_4bit, resume=args.resume, save_steps=args.save_steps)
+              use_4bit=use_4bit, resume=args.resume, save_steps=args.save_steps,
+              hub_revision=args.hub_revision, run_name=run_name,
+              push_every_save=args.push_every_save, init_adapter=args.init_adapter)
     except Exception as exc:
         log_and_exit(exc, stage="TRAIN")
 
