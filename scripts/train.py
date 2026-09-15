@@ -30,6 +30,11 @@ def main():
                         help="Số bước tích lũy gradient trước mỗi lần cập nhật")
     parser.add_argument("--max-seq-len", type=int, default=None,
                         help="Giới hạn token/text mỗi mẫu (giảm để tiết kiệm VRAM)")
+    parser.add_argument("--max-pixels", type=int, default=None,
+                        help="Giới hạn ảnh theo số tile 28x28 (vd 768 -> 768*28*28 px). "
+                             "Giảm để bớt image-token, tránh crash 'Mismatch in image token count'")
+    parser.add_argument("--min-pixels", type=int, default=None,
+                        help="Pixel tối thiểu theo số tile 28x28; ảnh nhỏ hơn bị phóng to")
     parser.add_argument("--lora-r", type=int, default=None)
     parser.add_argument("--lora-alpha", type=int, default=None)
     parser.add_argument("--max-samples", type=int, default=None, help="Giới hạn mẫu để test nhanh")
@@ -71,6 +76,10 @@ def main():
         config.GRADIENT_ACCUMULATION_STEPS = args.gradient_accumulation_steps
     if args.max_seq_len is not None:
         config.MAX_SEQ_LEN = args.max_seq_len
+    if args.max_pixels is not None:
+        config.MAX_PIXELS = args.max_pixels * 28 * 28
+    if args.min_pixels is not None:
+        config.MIN_PIXELS = args.min_pixels * 28 * 28
     if args.lora_r is not None:
         config.LORA_R = args.lora_r
     if args.lora_alpha is not None:
