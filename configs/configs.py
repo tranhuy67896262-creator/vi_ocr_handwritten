@@ -57,9 +57,10 @@ class Configs:
     TEST_SPLIT = "test"
     VAL_RATIO = 0.002
     MIN_PIXELS = 256 * 28 * 28
-    # 768 tile 28x28 ~= 768 image-token: vừa khung MAX_SEQ_LEN=1024 (cả text).
-    # Để 1280 như trước → image-token đã ~1456, truncation cắt vào vùng ảnh
-    # gây crash "Mismatch in image token count" + train chậm (50s+/it).
+    # Ảnh crop dòng: MAX_PIXELS chặn image-token ở mức 768 (768 tile 28x28).
+    # MAX_SEQ_LEN là budget TEXT; collator tự cộng thêm budget image-token
+    # (MAX_PIXELS/784) vào max_length -> tổng chuỗi = text + image, không còn
+    # truncation cắt image-token gây crash "Mismatch in image token count".
     MAX_PIXELS = 768 * 28 * 28
 
     # Training (QLoRA: giữ nguyên kiến thức model gốc)
@@ -69,6 +70,7 @@ class Configs:
     LEARNING_RATE = 2e-5
     LR_SCHEDULER = "cosine"
     WARMUP_RATIO = 0.03
+    # Budget TEXT (token). Image-token (≤768) được cộng thêm trong collator.
     MAX_SEQ_LEN = 1024
     GRADIENT_CHECKPOINTING = True
     # Colab/Linux: nạp ảnh và chạy processor song song, giảm thời gian GPU chờ batch.
