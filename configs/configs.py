@@ -30,9 +30,9 @@ class Configs:
     DATA_DIR = PROJECT_ROOT / "data"
     MODELS_DIR = PROJECT_ROOT / "models"
     NOTEBOOKS_DIR = PROJECT_ROOT / "notebooks"
-    # Registry SQLite lưu lịch sử các lần train/eval (tiện tra cứu; nguồn chân lý
+    # Registry JSON lưu lịch sử các lần train/eval (tiện tra cứu; nguồn chân lý
     # vẫn là adapter trên HF Hub). File nằm trong models/ -> đã git-ignore.
-    RUNS_DB = MODELS_DIR / "runs.db"
+    RUNS_FILE = MODELS_DIR / "runs.json"
 
     # Hugging Face
     HF_TOKEN = os.getenv("HF_TOKEN", "")

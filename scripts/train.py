@@ -47,6 +47,9 @@ def main():
     parser.add_argument("--no-4bit", action="store_true",
                         help="Train LoRA full-precision bf16 (bỏ 4-bit QLoRA; chất lượng nhỉnh hơn nhưng tốn VRAM)")
     parser.add_argument("--push", action="store_true", help="Push adapter lên Hugging Face Hub")
+    parser.add_argument("--push-every-save", action="store_true", help=(
+        "Push snapshot lên Hub mỗi save_steps (chống mất khi đứt giữa chừng, "
+        "vd Modal hết tiền). Cần --hub-repo."))
     parser.add_argument("--hub-repo", type=str, default=None, help=(
         "Tên repo Hub đích khi push, vd: owner/qwen25vl-3b-vi-hwr-lora"))
     parser.add_argument("--hub-revision", type=str, default=None, help=(
@@ -126,7 +129,7 @@ def main():
               push=args.push or config.PUSH_TO_HUB, hub_repo_id=config.HUB_ADAPTER_ID,
               use_4bit=use_4bit, resume=args.resume, save_steps=args.save_steps,
               hub_revision=args.hub_revision, run_name=args.run_name,
-              init_adapter=init_adapter)
+              init_adapter=init_adapter, push_every_save=args.push_every_save)
     except Exception as exc:
         log_and_exit(exc, stage="TRAIN")
 

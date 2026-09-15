@@ -114,7 +114,7 @@ python scripts/train.py --model Qwen/Qwen2.5-VL-7B-Instruct
 
 # Run dài (Colab hay đứt): lưu checkpoint dày + resume khi chạy lại
 python scripts/train.py --save-steps 100
-python scripts/train.py --resume            # tiếp tục từ checkpoint mới nhất
+python scripts/train.py --resume            # tiếp tục từ checkpoint mới nhất (local)
 python scripts/train.py --resume --save-steps 100
 
 # Ghi đè config nhanh từ CLI
@@ -153,6 +153,43 @@ ollama push <owner>/qwen25vl-3b-vi-hwr
 # Push adapter lên Hub (repo tự tạo nếu chưa có)
 python scripts/train.py --push --hub-repo <owner>/qwen25vl-3b-vi-hwr-lora
 ```
+
+## Train tiếp tục trên máy khác (Modal → Colab) — không phải từ đầu
+
+`--resume` chỉ dùng được khi checkpoint còn nằm **local** (Modal hết phiên là mất). Để an toàn, push snapshot lên Hub **định kỳ** mỗi `save_steps`, rồi máy khác kéo về train tiếp:
+
+```bash
+# 1) Trên Modal — train + push snapshot mỗi 100 step lên nhánh 'running'
+bash run_train.sh hf_xxx --train \
+  --model Qwen/Qwen2.5-VL-3B-Instruct \
+  --max-samples 1000 --save-steps 100 \
+  --push --push-every-save \
+  --hub-repo <owner>/qwen25vl-3b-vi-hwr-lora \
+  --hub-revision stage-10k-running \
+  --run-name stage-10k
+
+# 2) Modal đứt → sang Colab, kéo snapshot cuối về train tiếp
+bash run_train.sh hf_xxx --train \
+  --model Qwen/Qwen2.5-VL-3B-Instruct \
+  --max-samples 1000 --save-steps 100 \
+  --init-adapter <owner>/qwen25vl-3b-vi-hwr-lora@stage-10k-running \
+  --push --push-every-save \
+  --hub-repo <owner>/qwen25vl-3b-vi-hwr-lora \
+  --hub-revision stage-10k-running \
+  --run-name stage-10k
+
+# 3) Mốc chạy xong → push bản sạch sang nhánh chính thức (bỏ --push-every-save)
+bash run_train.sh hf_xxx --train \
+  --init-adapter <owner>/qwen25vl-3b-vi-hwr-lora@stage-10k-running \
+  --push --hub-repo <owner>/qwen25vl-3b-vi-hwr-lora \
+  --hub-revision stage-10k
+```
+
+- `--push-every-save` + `--save-steps 100` → mỗi 100 step có 1 snapshot trên Hub, mất tối đa 100 step khi đứt.
+- `--init-adapter <repo>@<revision>` nạp **trọng số** adapter cũ rồi train tiếp (reset LR/optimizer — khác `--resume` là giữ cả optimizer).
+- Base model phải **cùng họ** với adapter (3B adapter + 3B base).
+- Mỗi mốc dùng 1 nhánh riêng để không đè nhau; nhánh `main` để trống làm nơi đặt bản production cuối cùng.
+
 > Dataset mặc định: source gốc gated `5CD-AI/Viet-Handwriting-OCR-v2` (phải accept điều khoản trên HF). Đổi bằng `--dataset <owner>/<repo>`.
 
 ## Chạy trên A100 / H100 (Colab Pro)

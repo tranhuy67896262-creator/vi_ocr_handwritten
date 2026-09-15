@@ -1,4 +1,4 @@
-"""Tra cứu registry lịch sử train (models/runs.db)."""
+"""Tra cứu registry lịch sử train (models/runs.json)."""
 import argparse
 import sys
 from pathlib import Path
@@ -7,7 +7,7 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(PROJECT_ROOT))
 
 from configs.configs import Configs
-from src.storage import run_store
+from src.storage.run_store import RunStore
 
 
 def _print_row(row):
@@ -31,17 +31,18 @@ def _print_row(row):
 def main():
     """Parse CLI và in danh sách run."""
     parser = argparse.ArgumentParser(
-        description="Tra cứu lịch sử train trong registry (SQLite)"
+        description="Tra cứu lịch sử train trong registry (JSON)"
     )
     parser.add_argument("--limit", type=int, default=20, help="Số run gần nhất (mặc định 20)")
-    parser.add_argument("--db", type=str, default=None, help="Đường dẫn file .db (mặc định models/runs.db)")
+    parser.add_argument("--file", type=str, default=None,
+                        help="Đường dẫn file JSON (mặc định models/runs.json)")
     args = parser.parse_args()
 
     config = Configs()
-    db_path = args.db or str(config.RUNS_DB)
-    rows = run_store.list_runs(db_path, limit=args.limit)
+    file_path = args.file or str(config.RUNS_FILE)
+    rows = RunStore(file_path).list(limit=args.limit)
     if not rows:
-        print(f"Chưa có run nào trong {db_path}.")
+        print(f"Chưa có run nào trong {file_path}.")
         return
     for row in rows:
         _print_row(row)

@@ -13,7 +13,7 @@ from PIL import Image
 from configs.configs import Configs, _adapter_tag
 from src.datasets.dataset import detect_columns
 from src.infer.predict import load_ocr_model, predict_image
-from src.storage import run_store
+from src.storage.run_store import RunStore
 from src.utils.logging import log_and_exit, setup_file_logging
 
 
@@ -97,8 +97,8 @@ def main():
 
     if args.run_name:
         try:
-            run_id = run_store.update_metrics(
-                config.RUNS_DB, args.run_name, cer=cer(texts, preds), wer=wer(texts, preds)
+            run_id = RunStore(config.RUNS_FILE).update_metrics(
+                args.run_name, cer=cer(texts, preds), wer=wer(texts, preds)
             )
             if run_id is not None:
                 print(f"Đã ghi CER/WER vào run #{run_id} ({args.run_name}) trong registry")

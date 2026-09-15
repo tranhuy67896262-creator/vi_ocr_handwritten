@@ -5,10 +5,10 @@ from datetime import datetime
 from pathlib import Path
 
 import torch
-from transformers import Trainer, TrainingArguments
+from transformers import Trainer, TrainerCallback, TrainingArguments
 
 from src.datasets.collator import DataCollatorForQwenVL
-from src.storage import run_store
+from src.storage.run_store import RunStore
 from src.train.kl_trainer import KLLoRATrainer
 from src.utils.logging import setup_file_logging
 
@@ -63,15 +63,41 @@ def _latest_checkpoint(checkpoints_dir):
     return max(ckpts)[1] if ckpts else None
 
 
+class PushOnSaveCallback(TrainerCallback):
+    """Push adapter + processor lên Hub mỗi lần lưu checkpoint.
+
+    Chống mất dữ liệu khi train bị đứt giữa chừng (Modal/Colab hết phiên): snapshot
+    mới nhất luôn nằm trên Hub, máy khác `--init-adapter <repo>@<revision>` kéo về
+    train tiếp (chỉ mất tối đa ``save_steps`` step + reset LR).
+    """
+
+    def __init__(self, model, processor, hub_repo_id, token, revision):
+        self.model = model
+        self.processor = processor
+        self.hub_repo_id = hub_repo_id
+        self.token = token
+        self.revision = revision
+
+    def on_save(self, args, state, control, **kwargs):
+        """Gọi sau mỗi checkpoint: push snapshot hiện tại lên Hub."""
+        if not state.is_world_process_zero:
+            return control
+        self.model.push_to_hub(self.hub_repo_id, token=self.token, revision=self.revision)
+        self.processor.push_to_hub(self.hub_repo_id, token=self.token, revision=self.revision)
+        return control
+
+
 def train(config, model, processor, train_ds, eval_ds=None, push=False, hub_repo_id="",
           use_4bit=None, resume=False, save_steps=None,
-          hub_revision=None, run_name=None, init_adapter=None):
+          hub_revision=None, run_name=None, init_adapter=None, push_every_save=False):
     """Train LoRA, lưu adapter + metadata (push Hub nếu cần), ghi registry.
 
     - ``hub_revision``: nhánh đích trên Hub khi push (vd ``stage-10k``) — để giữ
       nhiều phiên bản adapter, mặc định ``main``.
     - ``run_name``: tách thư mục checkpoint theo mốc để ``--resume`` không lẫn run.
     - ``init_adapter``: adapter đã nạp để train tiếp (chỉ ghi vào metadata/registry).
+    - ``push_every_save``: push snapshot lên Hub mỗi ``save_steps`` (chống mất khi
+      đứt giữa chừng; cần ``hub_repo_id``).
     """
     if use_4bit is None:
         use_4bit = config.USE_4BIT
@@ -106,6 +132,12 @@ def train(config, model, processor, train_ds, eval_ds=None, push=False, hub_repo
     if trainer_cls is KLLoRATrainer:
         trainer_kwargs["kl_coef"] = config.KL_COEFFICIENT
     trainer = trainer_cls(**trainer_kwargs)
+    if push_every_save:
+        if not hub_repo_id:
+            raise ValueError("--push-every-save cần --hub-repo <owner>/<repo>.")
+        trainer.add_callback(PushOnSaveCallback(
+            model, processor, hub_repo_id, config.HF_TOKEN, hub_revision
+        ))
     resume_path = None
     if resume:
         resume_path = _latest_checkpoint(checkpoints_dir)
@@ -207,7 +239,7 @@ def _append_log_summary(config, log_path, train_ds, eval_ds, trainer):
 
 
 def _record_run(config, metadata, hub_repo, hub_revision, run_name, init_adapter):
-    """Ghi 1 dòng lịch sử train vào SQLite registry (không throw nếu DB lỗi)."""
+    """Ghi 1 dòng lịch sử train vào JSON registry (không throw nếu file lỗi)."""
     record = {
         "run_name": run_name,
         "model": metadata["model"],
@@ -230,7 +262,7 @@ def _record_run(config, metadata, hub_repo, hub_revision, run_name, init_adapter
         "kl_regularization": int(bool(metadata["kl_regularization"])),
     }
     try:
-        run_id = run_store.add_run(config.RUNS_DB, record)
-        print(f"Đã ghi run #{run_id} vào registry: {config.RUNS_DB}")
+        run_id = RunStore(config.RUNS_FILE).add(record)
+        print(f"Đã ghi run #{run_id} vào registry: {config.RUNS_FILE}")
     except Exception as exc:  # noqa: BLE001
         print(f"Không ghi được registry (bỏ qua): {exc}")
