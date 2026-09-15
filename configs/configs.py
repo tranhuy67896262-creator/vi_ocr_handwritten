@@ -53,9 +53,6 @@ class Configs:
     TRAIN_SPLIT = "train"
     TEST_SPLIT = "test"
     VAL_RATIO = 0.002
-    # Chuẩn hóa mọi ảnh về tỉ lệ khổ A4 (pad nền trắng, không crop) trước khi
-    # vào processor — áp dụng cả train (dataset.py) lẫn inference (predict.py).
-    A4_STANDARDIZE = True
     MIN_PIXELS = 256 * 28 * 28
     # 768 tile 28x28 ~= 768 image-token: vừa khung MAX_SEQ_LEN=1024 (cả text).
     # Để 1280 như trước → image-token đã ~1456, truncation cắt vào vùng ảnh
@@ -106,7 +103,7 @@ class Configs:
     # Hậu xử lý tiếng Việt (chữa dấu/lỗi ký tự OCR) — model HF seq2seq, bật qua cờ CLI/UI.
     SPELLFIX_MODEL = "nrl-ai/vn-spell-correction-small"
     PDF_DPI = 200  # DPI render trang PDF scan (khớp file scan thực tế ~200dpi)
-    # Số lát cắt mỗi trang A4 scan (PDF/DOCX): chẻ TRƯỚC khi thu nhỏ để mỗi lát
+    # Số lát cắt mỗi trang scan (PDF/DOCX): chẻ TRƯỚC khi thu nhỏ để mỗi lát
     # giữ chi tiết chữ nhỏ. Chỉ áp dụng khi ảnh lớn (cạnh dài > 1200px).
     PAGE_TILES = 2
     ATTN_IMPLEMENTATION = "auto"  # auto: flash_attention_2 nếu có (Linux/GPU lớn), nếu không sdpa

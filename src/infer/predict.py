@@ -7,7 +7,6 @@ from PIL import Image
 from transformers import Qwen2_5_VLForConditionalGeneration
 
 from src.modeling.load import load_processor, resolve_attn_implementation, resolve_infer_dtype
-from src.utils.image import standardize_a4
 
 
 def load_ocr_model(config, adapter_dir=None, model_name=None, load_4bit=False):
@@ -55,12 +54,9 @@ def load_ocr_model(config, adapter_dir=None, model_name=None, load_4bit=False):
     return model, processor
 
 
-def _prepare_image(config, image):
-    """Chuẩn hóa 1 ảnh PIL (RGB + A4) trước khi đưa vào processor."""
-    image = image.convert("RGB")
-    if config.A4_STANDARDIZE:
-        image = standardize_a4(image, max_pixels=config.MAX_PIXELS)
-    return image
+def _prepare_image(image):
+    """Chuẩn hóa 1 ảnh PIL (RGB) trước khi đưa vào processor."""
+    return image.convert("RGB")
 
 
 def _generate(config, model, processor, messages, images, max_new_tokens=None):
@@ -94,7 +90,7 @@ def predict_image(config, model, processor, image, system_prompt=None):
             ],
         }
     ]
-    return _generate(config, model, processor, messages, [_prepare_image(config, image)])
+    return _generate(config, model, processor, messages, [_prepare_image(image)])
 
 
 # Prompt ngắn cho mỗi lượt exemplar trong few-shot (lặp lại cho từng ví dụ).
@@ -121,12 +117,12 @@ def predict_image_fewshot(config, model, processor, image, exemplars,
             "role": "assistant",
             "content": [{"type": "text", "text": str(ex_text)}],
         })
-        images.append(_prepare_image(config, ex_image))
+        images.append(_prepare_image(ex_image))
     messages.append({
         "role": "user",
         "content": [{"type": "image"}, {"type": "text", "text": query_prompt}],
     })
-    images.append(_prepare_image(config, image))
+    images.append(_prepare_image(image))
     return _generate(config, model, processor, messages, images, max_new_tokens=max_new_tokens)
 
 
@@ -158,7 +154,7 @@ def render_pdf_pages(pdf_path, dpi=200):
 def _ocr_tiled(config, model, processor, img, tiles=None):
     """OCR 1 ảnh trang scan: chẻ lát TRƯỚC khi thu nhỏ để giữ chi tiết chữ nhỏ.
 
-    Ảnh lớn (cạnh dài > 1200px, vd A4 scan 200dpi) chẻ thành `tiles` dải ngang
+    Ảnh lớn (cạnh dài > 1200px, vd trang scan 200dpi) chẻ thành `tiles` dải ngang
     chồng nhau, mỗi dải chuẩn hóa + OCR riêng rồi gộp. Ảnh nhỏ OCR 1 phát.
     """
     from src.utils.image import split_strips

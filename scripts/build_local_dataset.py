@@ -2,7 +2,7 @@
 
 Đọc ``assets/labels.csv`` (cột ``image,text,split``) hoặc CSV tùy chỉnh, tạo dataset
 HuggingFace lưu local (``save_to_disk``) để dùng trực tiếp:
-    python scripts/train.py --dataset data/local --no-a4
+    python scripts/train.py --dataset data/local
 """
 import argparse
 import csv
@@ -95,7 +95,7 @@ def main():
         print(f"  {name}: {len(part)} rows")
     if skipped:
         print(f"  [WARN] Bỏ qua {skipped} dòng (thiếu nhãn/ảnh).")
-    print("Train: python scripts/train.py --dataset", args.output, "--no-a4")
+    print("Train: python scripts/train.py --dataset", args.output)
 
 
 if __name__ == "__main__":

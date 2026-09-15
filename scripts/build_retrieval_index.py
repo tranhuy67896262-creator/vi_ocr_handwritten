@@ -29,7 +29,6 @@ def main():
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument("--clip", type=str, default=CLIP_NAME, help="Model CLIP để nhúng")
     parser.add_argument("--output", type=str, default=None, help="File .npz đầu ra")
-    parser.add_argument("--no-a4", action="store_true", help="Không chuẩn hóa A4 trước khi nhúng")
     args = parser.parse_args()
 
     config = Configs()
@@ -51,8 +50,7 @@ def main():
     try:
         embedder = ClipEmbedder(args.clip)
         print(f"Embedder: {args.clip} | device={embedder.device}")
-        index = build_index(ds, image_col, embedder, pool=args.pool, seed=args.seed,
-                            a4_standardize=not args.no_a4, max_pixels=config.MAX_PIXELS)
+        index = build_index(ds, image_col, embedder, pool=args.pool, seed=args.seed)
     except Exception as exc:  # noqa: BLE001
         log_and_exit(exc, stage="INDEX",
                      extra_hint="Cần mạng để tải CLIP; hoặc ảnh trong pool bị lỗi.")
@@ -62,7 +60,6 @@ def main():
         "split": config.TRAIN_SPLIT,
         "image_col": image_col,
         "text_col": text_col,
-        "a4": not args.no_a4,
     })
     index.save(output)
     print(f"Đã lưu index ({len(index.refs)} ảnh) vào: {output}")

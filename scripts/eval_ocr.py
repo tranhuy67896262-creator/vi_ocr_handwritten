@@ -13,7 +13,6 @@ from PIL import Image
 from configs.configs import Configs, _adapter_tag
 from src.datasets.dataset import detect_columns, load_dataset_with_fallback
 from src.infer.predict import load_ocr_model, predict_image, predict_image_fewshot
-from src.utils.image import standardize_a4
 from src.utils.logging import log_and_exit, setup_file_logging
 
 
@@ -59,13 +58,10 @@ def _build_retriever(config, index_path, clip_name):
     return index, embedder, ds, image_col, text_col
 
 
-def _retrieve_exemplars(config, retriever, query_img, k):
+def _retrieve_exemplars(retriever, query_img, k):
     """Truy hồi ``k`` mẫu gần nhất với ảnh query từ index (theo style CLIP)."""
     index, embedder, ds, image_col, text_col = retriever
-    q = query_img.convert("RGB")
-    if config.A4_STANDARDIZE:
-        q = standardize_a4(q, max_pixels=config.MAX_PIXELS)
-    refs = index.search(embedder.embed([q])[0], k)
+    refs = index.search(embedder.embed([query_img.convert("RGB")])[0], k)
     exemplars = []
     for ref in refs:
         row = ds[ref]
@@ -77,7 +73,7 @@ def _predict(config, model, processor, img, k, static_exemplars, retriever):
     """OCR 1 ảnh: zero-shot (k=0) / few-shot cố định / few-shot retrieval."""
     if not k or k <= 0:
         return predict_image(config, model, processor, img)
-    exemplars = (_retrieve_exemplars(config, retriever, img, k)
+    exemplars = (_retrieve_exemplars(retriever, img, k)
                  if retriever is not None else static_exemplars)
     return predict_image_fewshot(config, model, processor, img, exemplars)
 
@@ -97,8 +93,6 @@ def main():
     parser.add_argument("--num-test", type=int, default=100, help="Số mẫu đánh giá trên test split")
     parser.add_argument("--no-adapter", action="store_true",
                         help="Zero-shot: chạy base model KHÔNG nạp LoRA adapter")
-    parser.add_argument("--no-a4", action="store_true",
-                        help="Tắt chuẩn hóa A4 (dùng cho ảnh crop dòng/word — tránh pad loãng chữ)")
     parser.add_argument("--spell-fix", action="store_true",
                         help="Hậu xử lý tiếng Việt bằng model spell-correction (chữa dấu/lỗi OCR)")
     parser.add_argument("--spell-fix-model", type=str, default=None,
@@ -128,8 +122,6 @@ def main():
         config.DATASET_NAME = args.dataset
     if args.max_new_tokens is not None:
         config.MAX_NEW_TOKENS = args.max_new_tokens
-    if args.no_a4:
-        config.A4_STANDARDIZE = False
     if args.prompt:
         # predict_image/ocr_pdf/ocr_docx mặc định dùng config.SYSTEM_PROMPT.
         config.SYSTEM_PROMPT = args.prompt

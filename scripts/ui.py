@@ -525,18 +525,64 @@ def save_token(token):
 
 # ---------------- App ----------------
 
+def _hub_header(cfg):
+    """Header kiểu Hub: tên model + badges + link (như trang model HF)."""
+    base = cfg.MODEL_NAME.rsplit("/", 1)[-1]
+    precision = "QLoRA--4bit" if cfg.USE_4BIT else "LoRA--bf16"
+    badges = (
+        f"![base](https://img.shields.io/badge/base-{base.replace('-', '--')}-blue) "
+        f"![precision](https://img.shields.io/badge/precision-{precision}-green) "
+        "![dataset](https://img.shields.io/badge/dataset-5CD--AI-orange)"
+    )
+    return (
+        "# 🚀 Vi-OCR-Handwritten\n"
+        f"**QLoRA fine-tune {base}** cho chữ viết tay tiếng Việt — "
+        "Fine-tune · Inference · Evaluation · Export.\n\n"
+        f"{badges}\n\n"
+        "[Dataset](https://huggingface.co/datasets/5CD-AI/Viet-Handwriting-OCR-v2) · "
+        "[Qwen2.5-VL-7B](https://huggingface.co/Qwen/Qwen2.5-VL-7B-Instruct) · "
+        "[Qwen2.5-VL-3B](https://huggingface.co/Qwen/Qwen2.5-VL-3B-Instruct)"
+    )
+
+
+def _hub_sidebar(cfg):
+    """Sidebar 'Model details' kiểu Hub (thông số + trạng thái token)."""
+    adapter_path = Path(str(cfg.ADAPTER_DIR))
+    gguf = _latest_gguf()
+    details = [
+        ("Base model", f"`{cfg.MODEL_NAME}`"),
+        ("Dataset", f"`{cfg.DATASET_NAME}`"),
+        ("Precision", "QLoRA 4-bit (NF4)" if cfg.USE_4BIT else "LoRA bf16"),
+        ("LoRA", f"r={cfg.LORA_R} · α={cfg.LORA_ALPHA} · dropout={cfg.LORA_DROPOUT}"),
+        ("Train", f"lr={cfg.LEARNING_RATE} · epochs={cfg.NUM_EPOCHS} · seq={cfg.MAX_SEQ_LEN}"),
+        ("Infer dtype", cfg.INFER_DTYPE),
+        ("Spell-fix", f"`{cfg.SPELLFIX_MODEL}`"),
+        ("Adapter", f"`{adapter_path.name}` {'✅' if adapter_path.exists() else '— chưa có'}"),
+        ("GGUF", f"`{Path(gguf).name}`" if gguf else "— chưa có"),
+    ]
+    body = "\n".join(f"- **{name}:** {value}" for name, value in details)
+    return f"### 📌 Model details\n{body}\n\n---\n{token_status()}"
+
+
 def build_app():
-    """Dựng giao diện Gradio 5 tab."""
+    """Dựng giao diện Gradio theo bố cục kiểu Hub (header + tab + sidebar)."""
     cfg = Configs()
-    with gr.Blocks(title="Vi-OCR-Handwritten UI") as demo:
-        gr.Markdown(
-            "# 🚀 Vi-OCR-Handwritten — QLoRA fine-tune Qwen2.5-VL\n"
-            "Fine-tune / OCR / Eval / Export. Log hiển thị realtime.\n"
-            "☁️ Dùng ké GPU Colab: "
-            "[mở notebook Colab]"
-            "(https://colab.research.google.com/notebook"
-            "#fileId=https%3A//huggingface.co/Qwen/Qwen2.5-VL-7B-Instruct.ipynb)"
-        )
+    with gr.Blocks(title="Vi-OCR-Handwritten UI", theme=gr.themes.Soft()) as demo:
+        gr.Markdown(_hub_header(cfg))
+
+        with gr.Tab("Model card"):
+            gr.Markdown(
+                "## Vi-OCR-Handwritten\n"
+                "Fine-tune **Qwen2.5-VL** bằng **LoRA/QLoRA** cho OCR chữ viết tay tiếng Việt. "
+                "Base đóng băng, chỉ train adapter; KL-regularization chống quên kiến thức gốc.\n\n"
+                "### Dùng nhanh\n"
+                "1. **Settings** — lưu HF_TOKEN.\n"
+                "2. **Fine-tune** — chọn dataset/model + cỡ data rồi train.\n"
+                "3. **Inference** — OCR ảnh / PDF / DOCX (zero-shot · few-shot · retrieval).\n"
+                "4. **Evaluation** — đo CER/WER (kèm post-correct tiếng Việt).\n"
+                "5. **Files & Export** — merge/GGUF → Ollama (import · push).\n\n"
+                "> Dataset nguồn là gated — cần accept điều khoản trên HuggingFace."
+            )
 
         with gr.Tab("Fine-tune"):
             gr.Markdown(
@@ -578,7 +624,7 @@ def build_app():
                 outputs=train_log,
             )
 
-        with gr.Tab("OCR 1 ảnh"):
+        with gr.Tab("Inference"):
             image = gr.Image(type="pil", image_mode="RGB", label="Ảnh chữ viết tay")
             with gr.Row():
                 ocr_model = gr.Dropdown(choices=MODEL_CHOICES, value=cfg.MODEL_NAME,
@@ -606,7 +652,7 @@ def build_app():
             pdf_btn.click(ocr_file_ui, inputs=[pdf_in, adapter_in, ocr_model, ocr_zeroshot, ocr_prompt],
                           outputs=pdf_out)
 
-        with gr.Tab("Eval CER/WER"):
+        with gr.Tab("Evaluation"):
             gr.Markdown(
                 "Dataset nguồn có **50k+ ảnh**. Chọn **100 mẫu** để test nhanh (vài phút), "
                 "**10k / 35k** để kết quả chắc hơn, **Full** để đánh giá toàn bộ test split "
@@ -650,7 +696,7 @@ def build_app():
             idx_btn = gr.Button("🧲 Xây index retrieval (few-shot theo ảnh)", variant="secondary")
             idx_btn.click(build_index_ui, inputs=[idx_pool, idx_seed], outputs=eval_log)
 
-        with gr.Tab("Export"):
+        with gr.Tab("Files & Export"):
             export_adapter = gr.Textbox(value=str(cfg.ADAPTER_DIR), label="Adapter")
             export_model = gr.Dropdown(choices=MODEL_CHOICES, value=cfg.MODEL_NAME,
                                        label="Base model", allow_custom_value=True)
@@ -733,6 +779,9 @@ def build_app():
             check_msg = gr.Markdown()
             check_btn.click(check_model_ui, inputs=[check_model, check_adapter],
                             outputs=check_msg)
+
+        with gr.Sidebar(position="right", open=True):
+            gr.Markdown(_hub_sidebar(cfg))
 
     return demo
 

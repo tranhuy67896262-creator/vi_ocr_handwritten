@@ -10,8 +10,6 @@ import numpy as np
 import torch
 from transformers import CLIPModel, CLIPProcessor
 
-from src.utils.image import standardize_a4
-
 CLIP_NAME = "openai/clip-vit-base-patch32"
 
 try:  # faiss (thư viện ANN nổi tiếng) — tùy chọn; thiếu thì fallback numpy
@@ -103,7 +101,7 @@ class ImageIndex:
 
 
 def build_index(dataset, image_col, embedder, pool=5000, seed=42,
-                a4_standardize=True, max_pixels=None, batch_size=64, progress=True):
+                batch_size=64, progress=True):
     """Chọn ``pool`` ảnh ngẫu nhiên (seeded), nhúng, trả ``ImageIndex``.
 
     refs giữ chỉ số dòng **gốc** của dataset để eval/lúc chạy lấy lại ảnh + nhãn.
@@ -117,10 +115,7 @@ def build_index(dataset, image_col, embedder, pool=5000, seed=42,
     chunks = []
     batch = []
     for i, row in enumerate(subset):
-        img = row[image_col]
-        if a4_standardize:
-            img = standardize_a4(img, max_pixels=max_pixels)
-        batch.append(img)
+        batch.append(row[image_col])
         if len(batch) >= batch_size:
             chunks.append(embedder.embed(batch))
             batch = []

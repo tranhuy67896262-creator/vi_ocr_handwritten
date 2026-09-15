@@ -35,13 +35,13 @@ Cách **thêm kiến thức mới mà không làm mất kiến thức gốc**: b
 
 ```
 configs/configs.py        # toàn bộ config (dataset, LoRA, training) — nguồn sự thật duy nhất
-src/datasets/dataset.py    # load + tự dò cột + format chat template Qwen (chuẩn hóa ảnh A4)
+src/datasets/dataset.py    # load + tự dò cột + format chat template Qwen
 src/datasets/collator.py   # chỉ tính loss trên phần assistant
 src/modeling/load.py       # load 4-bit + gắn LoRA
 src/train/trainer.py      # Trainer + lưu adapter (+ training_metadata.json)
 src/train/kl_trainer.py   # KL-regularization chống quên kiến thức gốc
 src/infer/predict.py      # inference OCR: ảnh lẻ / PDF nhiều trang / Word .docx
-src/utils/image.py        # chuẩn hóa ảnh khổ A4
+src/utils/image.py        # chẻ lát ảnh trang scan (split_strips)
 scripts/train.py    # entry point train (LoRA: QLoRA 4-bit hoặc bf16)
 scripts/eval_ocr.py       # OCR file + đánh giá CER/WER
 scripts/export_merged.py  # merge LoRA vào base
@@ -173,7 +173,7 @@ python scripts/train.py --push --hub-repo <owner>/qwen25vl-3b-vi-hwr-lora
 
 ## Ghi chú quan trọng
 
-- Ảnh train/inference tự chuẩn hóa khổ A4 (pad trắng) và giới hạn pixel để vừa context 1024 token (`A4_STANDARDIZE`, `MAX_PIXELS` trong `configs/configs.py`).
+- Ảnh đưa thẳng vào processor (không pad/crop); `MIN_PIXELS`/`MAX_PIXELS` trong `configs/configs.py` chặn số image-token cho vừa context.
 - `models/`, `data/`, `.hf_cache/`, `.env.dev` không commit (git-ignored). Cache HF nằm trong project nên chạy lại không tải lại.
 - UI offline (không tạo link public): `GRADIO_SHARE=0`.
 - Cần torch CUDA thủ công: `pip install torch torchvision --index-url https://download.pytorch.org/whl/cu128` (wrapper thường tự lo).
