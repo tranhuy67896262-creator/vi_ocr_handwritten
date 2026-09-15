@@ -7,15 +7,14 @@ from PIL import Image
 from transformers import Qwen2_5_VLForConditionalGeneration
 
 from src.modeling.load import load_processor, resolve_attn_implementation
-from src.utils.image import standardize_a4
 
 
-def load_ocr_model(config, adapter_dir=None, model_name=None):
+def load_ocr_model(config, adapter_dir=None, model_name=None, adapter_revision=None):
     """Load model gốc + LoRA adapter để OCR.
 
     adapter_dir có thể là đường dẫn local hoặc repo id trên HF Hub (vd 'owner/repo').
     model_name là base model (mặc định config.MODEL_NAME) — PHẢI cùng họ với adapter
-    (adapter 3B + base 7B sẽ lỗi shape).
+    (adapter 3B + base 7B sẽ lỗi shape). adapter_revision để chọn nhánh cụ thể trên Hub.
     """
     base = model_name or config.MODEL_NAME
     processor = load_processor(config, base)
@@ -33,7 +32,9 @@ def load_ocr_model(config, adapter_dir=None, model_name=None):
                 f"Không thấy adapter '{adapter_dir}'. Truyền đường dẫn local hoặc repo id dạng 'owner/repo'."
             )
         print(f"Load adapter từ: {adapter_dir}")
-        model = PeftModel.from_pretrained(model, adapter_dir, token=config.HF_TOKEN or None)
+        model = PeftModel.from_pretrained(
+            model, adapter_dir, revision=adapter_revision, token=config.HF_TOKEN or None
+        )
     model.eval()
     return model, processor
 
@@ -41,8 +42,6 @@ def load_ocr_model(config, adapter_dir=None, model_name=None):
 def predict_image(config, model, processor, image, system_prompt=None):
     """OCR 1 ảnh PIL -> trả về chuỗi chữ viết tay đọc được."""
     image = image.convert("RGB")
-    if config.A4_STANDARDIZE:
-        image = standardize_a4(image, max_pixels=config.MAX_PIXELS)
     messages = [
         {
             "role": "user",

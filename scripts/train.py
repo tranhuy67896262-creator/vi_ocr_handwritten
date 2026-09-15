@@ -44,6 +44,15 @@ def main():
     parser.add_argument("--push", action="store_true", help="Push adapter lên Hugging Face Hub")
     parser.add_argument("--hub-repo", type=str, default=None, help=(
         "Tên repo Hub đích khi push, vd: owner/qwen25vl-3b-vi-hwr-lora"))
+    parser.add_argument("--hub-revision", type=str, default=None, help=(
+        "Nhánh (revision) đích trên Hub khi push, vd stage-10k (mặc định: main)"))
+    parser.add_argument("--init-adapter", type=str, default=None, help=(
+        "Tiếp tục train từ adapter cũ: path local hoặc repo id 'owner/repo[@revision]'. "
+        "Nạp trọng số adapter, reset LR/step (khác --resume là khôi phục cả optimizer)."))
+    parser.add_argument("--adapter-revision", type=str, default=None, help=(
+        "Revision của adapter trên Hub khi dùng --init-adapter (thay @revision)"))
+    parser.add_argument("--run-name", type=str, default=None, help=(
+        "Tên run/mốc — tách thư mục checkpoint + nhãn trong registry (vd stage-10k)"))
     args = parser.parse_args()
 
     config = Configs()
@@ -94,16 +103,32 @@ def main():
 
     try:
         model, processor, use_4bit = load_model_and_processor(config)
-        model = build_lora_model(config, model)
+        init_adapter, adapter_revision = _split_adapter_ref(
+            args.init_adapter, args.adapter_revision
+        )
+        model = build_lora_model(
+            config, model, init_adapter=init_adapter, adapter_revision=adapter_revision
+        )
     except Exception as exc:
         log_and_exit(exc, stage="MODEL", extra_hint="Kiểm tra kết nối mạng, HF_TOKEN, tên model.")
 
     try:
         train(config, model, processor, train_ds, eval_ds,
               push=args.push or config.PUSH_TO_HUB, hub_repo_id=config.HUB_ADAPTER_ID,
-              use_4bit=use_4bit, resume=args.resume, save_steps=args.save_steps)
+              use_4bit=use_4bit, resume=args.resume, save_steps=args.save_steps,
+              hub_revision=args.hub_revision, run_name=args.run_name,
+              init_adapter=init_adapter)
     except Exception as exc:
         log_and_exit(exc, stage="TRAIN")
+
+
+def _split_adapter_ref(init_adapter, adapter_revision):
+    """Tách 'owner/repo@revision' thành (adapter_id, revision)."""
+    if not init_adapter:
+        return None, None
+    if "@" in init_adapter and adapter_revision is None:
+        init_adapter, _, adapter_revision = init_adapter.rpartition("@")
+    return init_adapter, adapter_revision
 
 
 if __name__ == "__main__":

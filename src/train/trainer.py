@@ -8,6 +8,7 @@ import torch
 from transformers import Trainer, TrainingArguments
 
 from src.datasets.collator import DataCollatorForQwenVL
+from src.storage import run_store
 from src.train.kl_trainer import KLLoRATrainer
 from src.utils.logging import setup_file_logging
 
@@ -63,8 +64,15 @@ def _latest_checkpoint(checkpoints_dir):
 
 
 def train(config, model, processor, train_ds, eval_ds=None, push=False, hub_repo_id="",
-          use_4bit=None, resume=False, save_steps=None):
-    """Train LoRA, lưu adapter + metadata (push Hub nếu cần)."""
+          use_4bit=None, resume=False, save_steps=None,
+          hub_revision=None, run_name=None, init_adapter=None):
+    """Train LoRA, lưu adapter + metadata (push Hub nếu cần), ghi registry.
+
+    - ``hub_revision``: nhánh đích trên Hub khi push (vd ``stage-10k``) — để giữ
+      nhiều phiên bản adapter, mặc định ``main``.
+    - ``run_name``: tách thư mục checkpoint theo mốc để ``--resume`` không lẫn run.
+    - ``init_adapter``: adapter đã nạp để train tiếp (chỉ ghi vào metadata/registry).
+    """
     if use_4bit is None:
         use_4bit = config.USE_4BIT
     if save_steps is not None:
@@ -83,7 +91,9 @@ def train(config, model, processor, train_ds, eval_ds=None, push=False, hub_repo
     if train_ds is not None:
         steps_per_epoch = math.ceil(len(train_ds) / eff_batch)
         num_train_steps = steps_per_epoch * config.NUM_EPOCHS
-    args = get_training_args(config, config.MODELS_DIR / "checkpoints", use_4bit, num_train_steps)
+    run_name = run_name or "default"
+    checkpoints_dir = config.MODELS_DIR / "checkpoints" / run_name
+    args = get_training_args(config, checkpoints_dir, use_4bit, num_train_steps)
 
     trainer_cls = KLLoRATrainer if config.KL_REGULARIZATION else Trainer
     trainer_kwargs = {
@@ -98,7 +108,7 @@ def train(config, model, processor, train_ds, eval_ds=None, push=False, hub_repo
     trainer = trainer_cls(**trainer_kwargs)
     resume_path = None
     if resume:
-        resume_path = _latest_checkpoint(config.MODELS_DIR / "checkpoints")
+        resume_path = _latest_checkpoint(checkpoints_dir)
         if resume_path:
             print(f"Tiếp tục từ checkpoint: {resume_path}")
         else:
@@ -110,23 +120,33 @@ def train(config, model, processor, train_ds, eval_ds=None, push=False, hub_repo
     processor.save_pretrained(config.ADAPTER_DIR)
     print(f"Đã lưu LoRA adapter vào: {config.ADAPTER_DIR}")
 
-    _save_training_metadata(config, train_ds, eval_ds, trainer, use_4bit)
+    metadata = _save_training_metadata(
+        config, train_ds, eval_ds, trainer, use_4bit,
+        run_name=run_name, init_adapter=init_adapter, hub_revision=hub_revision,
+    )
     _append_log_summary(config, log_path, train_ds, eval_ds, trainer)
 
+    pushed = False
     if push:
         if not hub_repo_id:
             raise ValueError(
                 "Chưa có tên repo Hub để push. "
                 "Truyền --hub-repo <owner>/<repo> (repo sẽ được tạo mới nếu chưa tồn tại)."
             )
-        model.push_to_hub(hub_repo_id, token=config.HF_TOKEN)
-        processor.push_to_hub(hub_repo_id, token=config.HF_TOKEN)
-        print(f"Đã push adapter lên Hub: {hub_repo_id}")
+        model.push_to_hub(hub_repo_id, token=config.HF_TOKEN, revision=hub_revision)
+        processor.push_to_hub(hub_repo_id, token=config.HF_TOKEN, revision=hub_revision)
+        revision = hub_revision or "main"
+        print(f"Đã push adapter lên Hub: {hub_repo_id}@{revision}")
+        pushed = True
+
+    _record_run(config, metadata, hub_repo_id if pushed else None,
+                hub_revision, run_name, init_adapter)
 
     return config.ADAPTER_DIR
 
 
-def _save_training_metadata(config, train_ds, eval_ds, trainer, use_4bit):
+def _save_training_metadata(config, train_ds, eval_ds, trainer, use_4bit,
+                            run_name=None, init_adapter=None, hub_revision=None):
     """Ghi lại số liệu training (đã train bao nhiêu data, cấu hình gì) vào JSON."""
     train_samples = len(train_ds) if train_ds is not None else 0
     eval_samples = len(eval_ds) if eval_ds is not None else 0
@@ -153,6 +173,9 @@ def _save_training_metadata(config, train_ds, eval_ds, trainer, use_4bit):
         "kl_regularization": config.KL_REGULARIZATION,
         "kl_coefficient": config.KL_COEFFICIENT,
         "adapter_dir": str(config.ADAPTER_DIR),
+        "run_name": run_name,
+        "init_adapter": init_adapter,
+        "hub_revision": hub_revision,
         "trained_at": datetime.now().isoformat(timespec="seconds"),
     }
 
@@ -181,3 +204,33 @@ def _append_log_summary(config, log_path, train_ds, eval_ds, trainer):
     with open(log_path, "a", encoding="utf-8") as f:
         f.write(line)
     print(f"Đã ghi tổng kết vào: {log_path}")
+
+
+def _record_run(config, metadata, hub_repo, hub_revision, run_name, init_adapter):
+    """Ghi 1 dòng lịch sử train vào SQLite registry (không throw nếu DB lỗi)."""
+    record = {
+        "run_name": run_name,
+        "model": metadata["model"],
+        "dataset": metadata["dataset"],
+        "adapter_dir": metadata["adapter_dir"],
+        "init_adapter": init_adapter,
+        "hub_repo": hub_repo or config.HUB_ADAPTER_ID or "",
+        "hub_revision": hub_revision or "",
+        "train_samples": metadata["train_samples"],
+        "eval_samples": metadata["eval_samples"],
+        "train_steps": metadata["train_steps"],
+        "num_epochs": metadata["num_epochs"],
+        "batch_size": metadata["batch_size"],
+        "gradient_accumulation_steps": metadata["gradient_accumulation_steps"],
+        "learning_rate": metadata["learning_rate"],
+        "max_seq_len": metadata["max_seq_len"],
+        "lora_r": metadata["lora_r"],
+        "lora_alpha": metadata["lora_alpha"],
+        "use_4bit": int(bool(metadata["use_4bit"])),
+        "kl_regularization": int(bool(metadata["kl_regularization"])),
+    }
+    try:
+        run_id = run_store.add_run(config.RUNS_DB, record)
+        print(f"Đã ghi run #{run_id} vào registry: {config.RUNS_DB}")
+    except Exception as exc:  # noqa: BLE001
+        print(f"Không ghi được registry (bỏ qua): {exc}")

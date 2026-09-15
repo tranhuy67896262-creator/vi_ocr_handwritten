@@ -6,7 +6,7 @@ một ``PrecisionLoader`` rồi đăng ký, không sửa luồng load chính.
 from abc import ABC, abstractmethod
 
 import torch
-from peft import LoraConfig, get_peft_model, prepare_model_for_kbit_training
+from peft import LoraConfig, PeftModel, get_peft_model, prepare_model_for_kbit_training
 from transformers import BitsAndBytesConfig, Qwen2_5_VLForConditionalGeneration, Qwen2_5_VLProcessor
 
 
@@ -136,17 +136,29 @@ def load_model_and_processor(config):
     return model, processor, loader.uses_4bit
 
 
-def build_lora_model(config, model):
-    """Gắn LoRA adapter lên model. Chỉ adapter được train, base model đóng băng."""
-    peft_config = LoraConfig(
-        r=config.LORA_R,
-        lora_alpha=config.LORA_ALPHA,
-        lora_dropout=config.LORA_DROPOUT,
-        target_modules=config.LORA_TARGET_MODULES,
-        bias="none",
-        task_type="CAUSAL_LM",
-    )
-    model = get_peft_model(model, peft_config)
+def build_lora_model(config, model, init_adapter=None, adapter_revision=None):
+    """Gắn LoRA adapter lên model. Chỉ adapter được train, base model đóng băng.
+
+    - ``init_adapter`` (path local hoặc repo id 'owner/repo'): nạp TRỌNG SỐ adapter
+      cũ rồi train tiếp (LR/step reset) — dùng cho staged training, khác ``--resume``
+      là khôi phục cả optimizer. ``r``/``alpha``/``target_modules`` lấy theo adapter
+      cũ, ``--lora-r`` bị bỏ qua.
+    - không có ``init_adapter``: tạo adapter mới từ ``LoraConfig`` như cũ.
+    """
+    if init_adapter:
+        model = PeftModel.from_pretrained(
+            model, init_adapter, revision=adapter_revision, is_trainable=True
+        )
+    else:
+        peft_config = LoraConfig(
+            r=config.LORA_R,
+            lora_alpha=config.LORA_ALPHA,
+            lora_dropout=config.LORA_DROPOUT,
+            target_modules=config.LORA_TARGET_MODULES,
+            bias="none",
+            task_type="CAUSAL_LM",
+        )
+        model = get_peft_model(model, peft_config)
     if config.GRADIENT_CHECKPOINTING:
         model.enable_input_require_grads()
     model.print_trainable_parameters()

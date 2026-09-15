@@ -173,7 +173,7 @@ python scripts/train.py --push --hub-repo <owner>/qwen25vl-3b-vi-hwr-lora
 
 ## Ghi chú quan trọng
 
-- Ảnh train/inference tự chuẩn hóa khổ A4 (pad trắng) và giới hạn pixel để vừa context 1024 token (`A4_STANDARDIZE`, `MAX_PIXELS` trong `configs/configs.py`).
+- Ảnh train/inference giữ nguyên gốc (dataset là ảnh crop dòng) — processor tự resize về lưới 28x28 và giới hạn theo `MIN_PIXELS`/`MAX_PIXELS` trong `configs/configs.py`.
 - `models/`, `data/`, `.hf_cache/`, `.env.dev` không commit (git-ignored). Cache HF nằm trong project nên chạy lại không tải lại.
 - UI offline (không tạo link public): `GRADIO_SHARE=0`.
 - Cần torch CUDA thủ công: `pip install torch torchvision --index-url https://download.pytorch.org/whl/cu128` (wrapper thường tự lo).

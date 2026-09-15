@@ -13,6 +13,7 @@ from PIL import Image
 from configs.configs import Configs, _adapter_tag
 from src.datasets.dataset import detect_columns
 from src.infer.predict import load_ocr_model, predict_image
+from src.storage import run_store
 from src.utils.logging import log_and_exit, setup_file_logging
 
 
@@ -26,9 +27,13 @@ def main():
                         help="Base model (mặc định: từ config) — phải cùng họ với adapter")
     parser.add_argument("--adapter", type=str, default=None,
                         help="Thư mục LoRA adapter hoặc repo id trên Hub (vd owner/repo); mặc định: từ config")
+    parser.add_argument("--adapter-revision", type=str, default=None,
+                        help="Nhánh (revision) của adapter trên Hub khi eval phiên bản cụ thể")
     parser.add_argument("--dataset", type=str, default=None,
                         help="Tên dataset HF để đánh giá (mặc định: từ config)")
     parser.add_argument("--num-test", type=int, default=100, help="Số mẫu đánh giá trên test split")
+    parser.add_argument("--run-name", type=str, default=None,
+                        help="Ghi CER/WER vào run này trong registry (khớp --run-name lúc train)")
     args = parser.parse_args()
 
     config = Configs()
@@ -41,7 +46,9 @@ def main():
     adapter_dir = args.adapter or str(config.ADAPTER_DIR)
 
     try:
-        model, processor = load_ocr_model(config, adapter_dir, args.model)
+        model, processor = load_ocr_model(
+            config, adapter_dir, args.model, adapter_revision=args.adapter_revision
+        )
     except Exception as exc:
         log_and_exit(
             exc, stage="MODEL",
@@ -87,6 +94,18 @@ def main():
 
     print(f"CER: {cer(texts, preds):.4f}")
     print(f"WER: {wer(texts, preds):.4f}")
+
+    if args.run_name:
+        try:
+            run_id = run_store.update_metrics(
+                config.RUNS_DB, args.run_name, cer=cer(texts, preds), wer=wer(texts, preds)
+            )
+            if run_id is not None:
+                print(f"Đã ghi CER/WER vào run #{run_id} ({args.run_name}) trong registry")
+            else:
+                print(f"Không tìm thấy run '{args.run_name}' trong registry — bỏ qua ghi.")
+        except Exception as exc:  # noqa: BLE001
+            print(f"Không ghi được CER/WER vào registry (bỏ qua): {exc}")
 
 
 if __name__ == "__main__":

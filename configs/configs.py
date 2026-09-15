@@ -30,6 +30,9 @@ class Configs:
     DATA_DIR = PROJECT_ROOT / "data"
     MODELS_DIR = PROJECT_ROOT / "models"
     NOTEBOOKS_DIR = PROJECT_ROOT / "notebooks"
+    # Registry SQLite lưu lịch sử các lần train/eval (tiện tra cứu; nguồn chân lý
+    # vẫn là adapter trên HF Hub). File nằm trong models/ -> đã git-ignore.
+    RUNS_DB = MODELS_DIR / "runs.db"
 
     # Hugging Face
     HF_TOKEN = os.getenv("HF_TOKEN", "")
@@ -53,9 +56,6 @@ class Configs:
     TRAIN_SPLIT = "train"
     TEST_SPLIT = "test"
     VAL_RATIO = 0.002
-    # Chuẩn hóa mọi ảnh về tỉ lệ khổ A4 (pad nền trắng, không crop) trước khi
-    # vào processor — áp dụng cả train (dataset.py) lẫn inference (predict.py).
-    A4_STANDARDIZE = True
     MIN_PIXELS = 256 * 28 * 28
     # 768 tile 28x28 ~= 768 image-token: vừa khung MAX_SEQ_LEN=1024 (cả text).
     # Để 1280 như trước → image-token đã ~1456, truncation cắt vào vùng ảnh
