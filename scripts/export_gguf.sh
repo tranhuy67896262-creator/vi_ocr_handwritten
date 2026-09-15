@@ -79,10 +79,12 @@ else
     echo "mmproj: $MMPROJ"
     OLLAMA_GGUF="$OUT_DIR/$TAG-$QUANT.gguf"
     [ -f "$OLLAMA_GGUF" ] || OLLAMA_GGUF="$OUT_DIR/$TAG-f16.gguf"
+    # SYSTEM prompt tuỳ chỉnh qua OLLAMA_SYSTEM (mac dinh: OCR tong quat, ca viet tay lan chu in).
+    OLLAMA_SYSTEM="${OLLAMA_SYSTEM:-You are an AI assistant specialized in OCR. Extract the exact text from the image (handwritten or printed), preserving spelling, punctuation and line structure. Return only the text, without any extra explanation.}"
     cat > "$OUT_DIR/Modelfile" <<EOF
 FROM ./$(basename "$OLLAMA_GGUF")
 ADAPTER ./$(basename "$MMPROJ")
-SYSTEM """Bạn là một trợ lý AI chuyên gia về OCR. Nhiệm vụ của bạn là trích xuất chính xác văn bản tiếng Việt viết tay từ hình ảnh. Giữ nguyên chính tả, dấu câu và cấu trúc dòng."""
+SYSTEM """$OLLAMA_SYSTEM"""
 PARAMETER temperature 0.1
 PARAMETER num_ctx 4096
 EOF
