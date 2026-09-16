@@ -35,13 +35,13 @@ Cách **thêm kiến thức mới mà không làm mất kiến thức gốc**: b
 
 ```
 configs/configs.py        # toàn bộ config (dataset, LoRA, training) — nguồn sự thật duy nhất
-src/datasets/dataset.py    # load + tự dò cột + format chat template Qwen (chuẩn hóa ảnh A4)
+src/datasets/dataset.py    # load + tự dò cột + format chat template Qwen (ảnh giữ nguyên gốc)
 src/datasets/collator.py   # chỉ tính loss trên phần assistant
 src/modeling/load.py       # load 4-bit + gắn LoRA
 src/train/trainer.py      # Trainer + lưu adapter (+ training_metadata.json)
 src/train/kl_trainer.py   # KL-regularization chống quên kiến thức gốc
 src/infer/predict.py      # inference OCR: ảnh lẻ / PDF nhiều trang / Word .docx
-src/utils/image.py        # chuẩn hóa ảnh khổ A4
+src/utils/image.py        # split_strips: chẻ trang lớn thành lát ngang cho OCR PDF/DOCX
 scripts/train.py    # entry point train (LoRA: QLoRA 4-bit hoặc bf16)
 scripts/eval_ocr.py       # OCR file + đánh giá CER/WER
 scripts/export_merged.py  # merge LoRA vào base
@@ -101,6 +101,65 @@ bash import_models_to_ollama.sh
 ```
 
 Smoke pipeline thực hiện: train 10 ảnh → OCR bằng adapter HF → merge model → convert GGUF + `mmproj` → import Ollama → chạy OCR ảnh test. Pipeline 20k chỉ chạy khi smoke test thành công.
+
+## Quy trình chạy an toàn: bắt lỗi sớm (đúc kết từ vụ loss 0.0)
+
+Collator từng đo `prompt_len` bằng tokenizer text-only, sót token ảnh của prompt vào labels → loss `0.0` suốt 800 step mà không báo lỗi. Đã sửa (`_mask_prompt` đo trong không gian multimodal + log batch đầu). Từ nay mỗi lần train đi theo 4 bước:
+
+**Bước 0 — Check mask tĩnh (2 phút, trước khi train):**
+```bash
+cat > /tmp/diag_labels.py <<'EOF'
+import sys; sys.path.insert(0, ".")
+from transformers import AutoProcessor
+from configs.configs import Configs
+from src.datasets.dataset import build_train_eval_datasets
+from src.datasets.collator import DataCollatorForQwenVL
+cfg = Configs()
+proc = AutoProcessor.from_pretrained(cfg.MODEL_NAME, trust_remote_code=True)
+train_ds, _ = build_train_eval_datasets(cfg, max_samples=8)
+col = DataCollatorForQwenVL(proc, max_length=cfg.MAX_SEQ_LEN, min_pixels=cfg.MIN_PIXELS, max_pixels=cfg.MAX_PIXELS)
+batch = col([train_ds[i] for i in range(4)])
+for i in range(4):
+    total = len(batch["input_ids"][i]); valid = int((batch["labels"][i] != -100).sum())
+    print(f"sample {i}: seq_len={total} valid_labels={valid} ({100*valid/total:.1f}%)")
+print("valid decode:", proc.tokenizer.decode(batch["labels"][0][batch['labels'][0] != -100][:60]))
+EOF
+python /tmp/diag_labels.py
+```
+- Đạt: `valid decode` ra chữ Việt, valid ~5–30%.
+- Hỏng: ra `<|image_pad|>` hoặc valid 0%/>80% → đừng train.
+
+**Bước 1 — Smoke 100 mẫu**, nhìn dòng đầu tiên sau `Map: 100%`:
+```bash
+./run_train.sh --train --max-samples 100
+```
+```
+[collator] batch đầu: seq_len=386 valid=45 (11.7%) | labels decode: <chữ đáp án...>
+```
+Decode ra chữ Việt mới cho chạy tiếp. Dòng này còn nằm trong `models/training.log` (`grep collator models/training.log`).
+
+**Bước 2 — Check loss ở step 50–100:**
+```bash
+python -c "import json,glob; p=sorted(glob.glob('models/checkpoints/<run>/checkpoint-*/trainer_state.json'))[-1]; d=json.load(open(p)); [print(e) for e in d['log_history'][-3:]]"
+```
+- Đạt: loss dương giảm dần, `grad_norm` 1–30.
+- Hỏng (`loss: 0.0` tuyệt đối): Ctrl+C ngay, khỏi tốn GPU.
+
+**Bước 3 — Check chống mất ở step 100:** `ls models/checkpoints/<run>/` có `checkpoint-100` + nhánh Hub có commit mới (`--push-every-save` đang làm việc).
+
+**Full 7B trên Modal L40S (48GB):**
+```bash
+./run_train.sh --train \
+  --model Qwen/Qwen2.5-VL-7B-Instruct --no-4bit \
+  --batch-size 4 --gradient-accumulation-steps 4 --lr 2e-5 --epochs 1 \
+  --save-steps 100 --push --push-every-save \
+  --hub-repo <owner>/qwen25vl-7b-vi-hwr-lora \
+  --hub-revision stage-full --run-name full2
+```
+- Giữ batch 4 (đang dùng ~35GB; batch 8 OOM). ~3700 step, ~8–9h.
+- bf16 (`--no-4bit`) nhanh hơn QLoRA từng step (không dequantize); mặc định không cờ là QLoRA (`USE_4BIT=True`).
+
+> ⚠️ Adapter train trước fix collator (triệu chứng loss `0.0`) là rác — đừng eval chúng để kết luận chất lượng. Chạy lại dùng `--run-name` mới để khỏi lẫn checkpoint cũ.
 
 ## Chạy chi tiết (terminal)
 
