@@ -29,6 +29,8 @@ def main():
                         help="Thư mục LoRA adapter hoặc repo id trên Hub (vd owner/repo); mặc định: từ config")
     parser.add_argument("--adapter-revision", type=str, default=None,
                         help="Nhánh (revision) của adapter trên Hub khi eval phiên bản cụ thể")
+    parser.add_argument("--no-adapter", action="store_true",
+                        help="Chỉ eval base model gốc, không nạp adapter")
     parser.add_argument("--dataset", type=str, default=None,
                         help="Tên dataset HF để đánh giá (mặc định: từ config)")
     parser.add_argument("--num-test", type=int, default=100, help="Số mẫu đánh giá trên test split")
@@ -43,7 +45,7 @@ def main():
         config.ADAPTER_DIR = config.MODELS_DIR / f"qwen25vl-{_adapter_tag(args.model)}-vi-hwr-lora"
     if args.dataset:
         config.DATASET_NAME = args.dataset
-    adapter_dir = args.adapter or str(config.ADAPTER_DIR)
+    adapter_dir = None if args.no_adapter else (args.adapter or str(config.ADAPTER_DIR))
 
     try:
         model, processor = load_ocr_model(
