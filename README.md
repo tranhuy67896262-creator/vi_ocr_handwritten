@@ -159,6 +159,25 @@ python -c "import json,glob; p=sorted(glob.glob('models/checkpoints/<run>/checkp
 - Giữ batch 4 (đang dùng ~35GB; batch 8 OOM). ~3700 step, ~8–9h.
 - bf16 (`--no-4bit`) nhanh hơn QLoRA từng step (không dequantize); mặc định không cờ là QLoRA (`USE_4BIT=True`).
 
+**Thang đo chất lượng: smoke-100 → 5k → full:**
+- smoke-100 (vài phút): check kỹ thuật (mask đúng, loss ≠ 0, push chạy).
+- 5k (~45 phút, ~312 step): check chất lượng — đủ rẻ để thử, đủ lớn để CER có ý nghĩa. CER tốt hơn base rõ rệt thì full mới đáng tiền; còn tệ thì dừng xem lại trước khi đốt 9h.
+```bash
+./run_train.sh --train \
+  --model Qwen/Qwen2.5-VL-7B-Instruct --no-4bit \
+  --max-samples 5000 --batch-size 4 --gradient-accumulation-steps 4 \
+  --lr 2e-5 --epochs 1 --save-steps 100 \
+  --push --push-every-save \
+  --hub-repo <owner>/qwen25vl-7b-vi-hwr-lora \
+  --hub-revision stage-5k --run-name run-5k
+```
+So base vs adapter 5k trên cùng 200 mẫu test:
+```bash
+python scripts/eval_ocr.py --model Qwen/Qwen2.5-VL-7B-Instruct --num-test 200
+python scripts/eval_ocr.py --model Qwen/Qwen2.5-VL-7B-Instruct --adapter <owner>/qwen25vl-7b-vi-hwr-lora --adapter-revision stage-5k --num-test 200
+```
+Lưu ý: `--max-samples 5000` lấy 5000 mẫu đầu (không shuffle) — đủ để validate, chốt cuối cùng vẫn bằng bản full + eval test split.
+
 > ⚠️ Adapter train trước fix collator (triệu chứng loss `0.0`) là rác — đừng eval chúng để kết luận chất lượng. Chạy lại dùng `--run-name` mới để khỏi lẫn checkpoint cũ.
 
 ## Chạy chi tiết (terminal)
