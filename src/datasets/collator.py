@@ -1,5 +1,7 @@
 """Collator Qwen2.5-VL: chỉ tính loss trên phần assistant."""
 _PATCH = 28  # lưới patch của Qwen2.5-VL
+# Token ảnh của Qwen2.5-VL — mask dự phòng trong labels (xem _mask_prompt).
+_IMAGE_TOKENS = ("<|image_pad|>", "<|vision_start|>", "<|vision_end|>")
 
 
 class DataCollatorForQwenVL:
@@ -54,17 +56,47 @@ class DataCollatorForQwenVL:
         pad_id = self.processor.tokenizer.pad_token_id
         if pad_id is not None:
             labels[labels == pad_id] = -100
-        for i, e in enumerate(examples):
-            prompt = self.processor.apply_chat_template(
-                e["messages"][:-1], tokenize=False, add_generation_prompt=True
-            )
-            prompt_len = len(
-                self.processor.tokenizer(prompt, add_special_tokens=False)["input_ids"]
-            )
-            labels[i, :prompt_len] = -100
+        self._mask_prompt(examples, images, labels)
 
         batch["labels"] = labels
         return batch
+
+    def _mask_prompt(self, examples, images, labels):
+        """Mask toàn bộ prompt, chỉ giữ answer trong labels.
+
+        BẮT BUỘC đo độ dài prompt trong KHÔNG GIAN MULTIMODAL (processor kèm
+        ảnh): placeholder ``<|image_pad|>`` nở ra hàng trăm image-token khi qua
+        processor, nên đo bằng tokenizer text-only sẽ ngắn hơn hàng trăm token
+        so với ``input_ids`` thật — mask sót token ảnh của prompt vào labels,
+        loss ≈ 0 và model không học gì (đã gặp thực tế: loss 0.0 suốt 800 step,
+        decode labels toàn ``<|image_pad|>``).
+        """
+        prompt_texts = [
+            self.processor.apply_chat_template(
+                e["messages"][:-1], tokenize=False, add_generation_prompt=True
+            )
+            for e in examples
+        ]
+        prompt_ids = self.processor(
+            text=prompt_texts,
+            images=images,
+            padding=False,
+            truncation=True,
+            max_length=self._effective_max_length(),
+            add_special_tokens=False,
+            min_pixels=self.min_pixels,
+            max_pixels=self.max_pixels,
+        )["input_ids"]
+        for i, ids in enumerate(prompt_ids):
+            labels[i, : len(ids)] = -100
+        # Dự phòng: mask mọi image-token còn sót (vd mẫu bị truncate).
+        for tok in _IMAGE_TOKENS:
+            try:
+                tid = self.processor.tokenizer.convert_tokens_to_ids(tok)
+            except Exception:  # noqa: BLE001
+                continue
+            if isinstance(tid, int) and tid >= 0:
+                labels[labels == tid] = -100
 
 
 def _log_batch_diagnostic(texts, images, processor, max_length):
