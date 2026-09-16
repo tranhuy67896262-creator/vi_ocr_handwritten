@@ -38,6 +38,9 @@ def main():
     parser.add_argument("--lora-r", type=int, default=None)
     parser.add_argument("--lora-alpha", type=int, default=None)
     parser.add_argument("--max-samples", type=int, default=None, help="Giới hạn mẫu để test nhanh")
+    parser.add_argument("--start-samples", type=int, default=0,
+                        help="Bỏ qua N mẫu đầu, train lát data mới "
+                             "(vd 5k đầu xong, chạy tiếp 5k sau: --start-samples 5000 --max-samples 5000)")
     parser.add_argument("--resume", action="store_true",
                         help="Tiếp tục từ checkpoint mới nhất (đứt giữa chừng train tiếp, không mất công)")
     parser.add_argument("--save-steps", type=int, default=None,
@@ -106,7 +109,8 @@ def main():
           f" | lr={config.LEARNING_RATE} | epochs={config.NUM_EPOCHS}")
 
     try:
-        train_ds, eval_ds = build_train_eval_datasets(config, max_samples=args.max_samples)
+        train_ds, eval_ds = build_train_eval_datasets(
+            config, max_samples=args.max_samples, start_samples=args.start_samples)
     except Exception as exc:
         log_and_exit(
             exc, stage="DATASET",

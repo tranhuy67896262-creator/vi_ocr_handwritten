@@ -146,6 +146,7 @@ def build_lora_model(config, model, init_adapter=None, adapter_revision=None):
     - không có ``init_adapter``: tạo adapter mới từ ``LoraConfig`` như cũ.
     """
     if init_adapter:
+        print(f"Nạp trọng số adapter cũ để train tiếp: {init_adapter}")
         model = PeftModel.from_pretrained(
             model, init_adapter, revision=adapter_revision, is_trainable=True
         )

@@ -89,11 +89,17 @@ def _load_local_dataset(path, split):
     return bundle
 
 
-def build_train_eval_datasets(config, max_samples=None):
-    """Load + format dataset, tách 1 phần nhỏ làm eval để theo dõi loss."""
+def build_train_eval_datasets(config, max_samples=None, start_samples=0):
+    """Load + format dataset, tách 1 phần nhỏ làm eval để theo dõi loss.
+
+    ``start_samples``: bỏ qua N mẫu đầu — train lát data mới (vd 5k đầu xong,
+    chạy tiếp 5k sau bằng ``--start-samples 5000 --max-samples 5000``).
+    """
     ds = load_dataset_with_fallback(config)
-    if max_samples is not None:
-        ds = ds.select(range(min(max_samples, len(ds))))
+    if max_samples is not None or start_samples:
+        start = max(start_samples, 0)
+        end = len(ds) if max_samples is None else min(start + max_samples, len(ds))
+        ds = ds.select(range(start, end))
 
     image_col, text_col = detect_columns(ds)
     print(f"Cột ảnh: {image_col} | Cột văn bản: {text_col}")
@@ -108,5 +114,6 @@ def build_train_eval_datasets(config, max_samples=None):
         print(f"Train: {len(split['train'])} | Eval: {len(split['test'])}")
         return split["train"], split["test"]
 
-    print(f"Train: {len(ds)} | Eval: None")
+    print(f"Train: {len(ds)} | Eval: None"
+          + (f" (từ mẫu {start_samples})" if start_samples else ""))
     return ds, None
