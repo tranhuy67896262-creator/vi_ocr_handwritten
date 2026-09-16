@@ -85,8 +85,12 @@ class PushOnSaveCallback(TrainerCallback):
         """Gọi sau mỗi checkpoint: push snapshot hiện tại lên Hub."""
         if not state.is_world_process_zero:
             return control
-        self.model.push_to_hub(self.hub_repo_id, token=self.token, revision=self.revision)
-        self.processor.push_to_hub(self.hub_repo_id, token=self.token, revision=self.revision)
+        try:
+            self.model.push_to_hub(self.hub_repo_id, token=self.token, revision=self.revision)
+            self.processor.push_to_hub(self.hub_repo_id, token=self.token, revision=self.revision)
+        except Exception as exc:
+            # HF sập/lỗi mạng không được giết run — train tiếp, lần save sau thử lại.
+            print(f"[WARN] Push snapshot thất bại (train vẫn tiếp tục): {type(exc).__name__}: {exc}")
         return control
 
 
@@ -170,11 +174,15 @@ def train(config, model, processor, train_ds, eval_ds=None, push=False, hub_repo
                 "Chưa có tên repo Hub để push. "
                 "Truyền --hub-repo <owner>/<repo> (repo sẽ được tạo mới nếu chưa tồn tại)."
             )
-        model.push_to_hub(hub_repo_id, token=config.HF_TOKEN, revision=hub_revision)
-        processor.push_to_hub(hub_repo_id, token=config.HF_TOKEN, revision=hub_revision)
-        revision = hub_revision or "main"
-        print(f"Đã push adapter lên Hub: {hub_repo_id}@{revision}")
-        pushed = True
+        try:
+            model.push_to_hub(hub_repo_id, token=config.HF_TOKEN, revision=hub_revision)
+            processor.push_to_hub(hub_repo_id, token=config.HF_TOKEN, revision=hub_revision)
+            revision = hub_revision or "main"
+            print(f"Đã push adapter lên Hub: {hub_repo_id}@{revision}")
+            pushed = True
+        except Exception as exc:
+            # Adapter + metadata local đã lưu xong — chỉ mất push remote, up tay sau được.
+            print(f"[WARN] Push cuối thất bại (adapter local vẫn nguyên): {type(exc).__name__}: {exc}")
 
     _record_run(config, metadata, hub_repo_id if pushed else None,
                 hub_revision, run_name, init_adapter)
