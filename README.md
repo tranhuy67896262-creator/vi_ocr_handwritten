@@ -145,6 +145,16 @@ python -c "import json,glob; p=sorted(glob.glob('models/checkpoints/<run>/checkp
 - Đạt: loss dương giảm dần, `grad_norm` 1–30.
 - Hỏng (`loss: 0.0` tuyệt đối): Ctrl+C ngay, khỏi tốn GPU.
 
+**Bước 2b — Eval loss tự động mỗi 100 step:** train đủ data (có eval split nội bộ 119 mẫu) thì Trainer tự chạy eval loss cùng nhịp checkpoint — tìm trong log dòng `{'eval_loss': ..., 'epoch': ...}`. `eval_loss` giảm dần = đi đúng hướng; tăng dần hoặc `nan` = dừng xem lại.
+
+**Check CER giữa chừng (máy khác, không đụng GPU train):** nhờ `--push-every-save`, snapshot mới nhất luôn nằm trên Hub — mở máy khác eval CER ngay khi train đang chạy:
+```bash
+python scripts/eval_ocr.py --model Qwen/Qwen2.5-VL-7B-Instruct \
+  --adapter <owner>/qwen25vl-7b-vi-hwr-lora --adapter-revision stage-full \
+  --num-test 100 --run-name mid-500
+```
+So trend CER theo mốc: base → step ~500 → ~1500 → ~3000 → xong. CER giảm dần = đúng hướng; đứng yên hoặc tệ hơn base tới step ~1000–1500 = dừng, sai hướng.
+
 **Bước 3 — Check chống mất ở step 100:** `ls models/checkpoints/<run>/` có `checkpoint-100` + nhánh Hub có commit mới (`--push-every-save` đang làm việc).
 
 **Full 7B trên Modal L40S (48GB):**

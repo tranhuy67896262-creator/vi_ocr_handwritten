@@ -16,8 +16,8 @@ from src.utils.logging import setup_file_logging
 OPTIMIZER_BY_4BIT = {True: "paged_adamw_8bit", False: "adamw_torch"}
 
 
-def get_training_args(config, output_dir, use_4bit, num_train_steps=None):
-    """Dựng TrainingArguments từ config."""
+def get_training_args(config, output_dir, use_4bit, num_train_steps=None, eval_steps=None):
+    """Dựng TrainingArguments từ config (eval loss định kỳ nếu có eval_steps)."""
     use_bf16 = torch.cuda.is_bf16_supported()
     args = {
         "output_dir": str(output_dir),
@@ -42,7 +42,10 @@ def get_training_args(config, output_dir, use_4bit, num_train_steps=None):
         "seed": config.SEED,
         "report_to": ["none"],
         "save_strategy": "steps",
+        "eval_strategy": "steps" if eval_steps else "no",
     }
+    if eval_steps:
+        args["eval_steps"] = eval_steps
     if num_train_steps:
         args["warmup_steps"] = max(1, int(config.WARMUP_RATIO * num_train_steps))
     if config.GRADIENT_CHECKPOINTING:
@@ -119,7 +122,9 @@ def train(config, model, processor, train_ds, eval_ds=None, push=False, hub_repo
         num_train_steps = steps_per_epoch * config.NUM_EPOCHS
     run_name = run_name or "default"
     checkpoints_dir = config.MODELS_DIR / "checkpoints" / run_name
-    args = get_training_args(config, checkpoints_dir, use_4bit, num_train_steps)
+    # Eval loss định kỳ khi có eval set — phát hiện lệch hướng sớm (xem README).
+    eval_steps = config.SAVE_STEPS if eval_ds is not None else None
+    args = get_training_args(config, checkpoints_dir, use_4bit, num_train_steps, eval_steps)
 
     trainer_cls = KLLoRATrainer if config.KL_REGULARIZATION else Trainer
     trainer_kwargs = {
