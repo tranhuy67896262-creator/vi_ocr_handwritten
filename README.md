@@ -219,21 +219,24 @@ python scripts/eval_ocr.py --num-test 200
 python scripts/eval_ocr.py --model Qwen/Qwen2.5-VL-7B-Instruct \
   --adapter models/qwen25vl-7b-vi-hwr-lora --num-test 200
 
-# Export full model (merge LoRA vào base, chạy độc lập)
-python scripts/export_merged.py
-#   --adapter <path-or-repo-id>   --model <base>   --output <dir>
-
-# Export GGUF (llama.cpp/Ollama) — Linux/Colab, sau export_merged
-./scripts/export_gguf.sh            # convert thang Q6_K (bo f16 trung gian) + convert mmproj + sinh Modelfile vào models/gguf/
-#   QUANT=Q4_K_M ./scripts/export_gguf.sh   (chọn loại quantize khác)
-#   LLAMA_CPP_DIR=... ./scripts/export_gguf.sh   (nếu llama.cpp chỗ khác)
-
-# Chạy trên Ollama (cần CẢ 2 file: model + mmproj vision)
+# Export full model → GGUF → Ollama (Linux/Modal, merge 7B cần GPU ~28GB)
+# Bước 1 — merge LoRA vào base:
+python scripts/export_merged.py \
+  --model Qwen/Qwen2.5-VL-7B-Instruct \
+  --adapter <path-adapter-local-hoac-repo-id> \
+  --output models/qwen25vl-7b-vi-hwr-lora-merged
+# Bước 2 — convert GGUF + mmproj + Modelfile (tự clone/build llama.cpp nếu chưa có):
+./scripts/export_gguf.sh models/qwen25vl-7b-vi-hwr-lora-merged models/gguf
+#   ra models/gguf/: *-Q6_K.gguf (text) + mmproj-*.gguf (vision, BẮT BUỘC) + Modelfile
+#   QUANT=Q4_K_M ./scripts/export_gguf.sh ...   (đổi quantize, mặc định Q6_K)
+#   OLLAMA_SYSTEM="..." ...                     (đổi system prompt OCR)
+#   LLAMA_CPP_DIR=... ./scripts/export_gguf.sh  (nếu llama.cpp chỗ khác)
+# Bước 3 — import vào Ollama (cần CẢ 2 file: model + mmproj vision):
 cd models/gguf   # đã có sẵn Modelfile (FROM text + ADAPTER mmproj + SYSTEM OCR) do export_gguf.sh sinh
-ollama create qwen25vl-3b-vi-hwr -f Modelfile
+ollama create qwen25vl-7b-vi-hwr -f Modelfile
 #   hoặc bấm nút import trong tab Export của UI (tự chạy lệnh trên, cần ollama serve đang chạy)
-ollama run qwen25vl-3b-vi-hwr "Đọc chữ trong ảnh" -- /path/to/anh.jpg
-ollama push <owner>/qwen25vl-3b-vi-hwr
+ollama run qwen25vl-7b-vi-hwr "Đọc chữ trong ảnh" -- /path/to/anh.jpg
+ollama push <owner>/qwen25vl-7b-vi-hwr
 #   Thiếu mmproj → lỗi 500 "image input is not supported ... provide the mmproj".
 #   Ollama ra chữ linh tinh nhưng llama.cpp đọc đúng → lỗi phía Ollama, test bằng:
 #   llama-mtmd-cli -m model.gguf --mmproj mmproj.gguf --image anh.jpg -p "..." -n 256
