@@ -1,4 +1,6 @@
 """Collator Qwen2.5-VL: chỉ tính loss trên phần assistant."""
+import logging
+
 _PATCH = 28  # lưới patch của Qwen2.5-VL
 # Token ảnh của Qwen2.5-VL — mask dự phòng trong labels (xem _mask_prompt).
 _IMAGE_TOKENS = ("<|image_pad|>", "<|vision_start|>", "<|vision_end|>")
@@ -116,10 +118,13 @@ class DataCollatorForQwenVL:
         except Exception:  # noqa: BLE001
             text = "<không decode được>"
         ratio = 100 * len(valid) / max(len(row), 1)
-        print(
+        msg = (
             f"[collator] batch đầu: seq_len={len(row)} valid={len(valid)} "
             f"({ratio:.1f}%) | labels decode: {text[:300]}"
         )
+        print(msg)
+        # Qua logging để dòng này còn nằm lại trong models/training.log.
+        logging.getLogger(__name__).info(msg)
 
 
 def _log_batch_diagnostic(texts, images, processor, max_length):
