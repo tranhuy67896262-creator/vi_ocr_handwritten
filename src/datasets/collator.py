@@ -18,6 +18,7 @@ class DataCollatorForQwenVL:
         self.max_length = max_length
         self.min_pixels = min_pixels
         self.max_pixels = max_pixels
+        self._logged_first_batch = False
 
     def _effective_max_length(self):
         """Trả max_length thật sự truyền cho processor = text budget + image budget.
@@ -57,6 +58,9 @@ class DataCollatorForQwenVL:
         if pad_id is not None:
             labels[labels == pad_id] = -100
         self._mask_prompt(examples, images, labels)
+        if not self._logged_first_batch:
+            self._logged_first_batch = True
+            self._log_first_batch(labels)
 
         batch["labels"] = labels
         return batch
@@ -97,6 +101,25 @@ class DataCollatorForQwenVL:
                 continue
             if isinstance(tid, int) and tid >= 0:
                 labels[labels == tid] = -100
+
+    def _log_first_batch(self, labels):
+        """In 1 lần duy nhất nội dung labels của batch đầu để bắt lỗi mask sớm.
+
+        Chạy hàng chục nghìn mẫu mới phát hiện mask sai là quá muộn: chỉ cần
+        nhìn dòng này ở step 0 — nếu decode ra ``<|image_pad|>`` thay vì chữ
+        đáp án thì dừng ngay, khỏi tốn GPU.
+        """
+        row = labels[0]
+        valid = row[row != -100]
+        try:
+            text = self.processor.tokenizer.decode(valid[:200].tolist())
+        except Exception:  # noqa: BLE001
+            text = "<không decode được>"
+        ratio = 100 * len(valid) / max(len(row), 1)
+        print(
+            f"[collator] batch đầu: seq_len={len(row)} valid={len(valid)} "
+            f"({ratio:.1f}%) | labels decode: {text[:300]}"
+        )
 
 
 def _log_batch_diagnostic(texts, images, processor, max_length):
