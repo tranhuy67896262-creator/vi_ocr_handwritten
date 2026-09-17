@@ -34,6 +34,9 @@ local/
 # Gradio runtime cache (tu sinh khi chay UI, khong commit)
 .gradio/
 
+# Log train cua stage_train.sh (nohup, tu sinh moi moc)
+train-*.log
+
 # Labeling: backup CSV tu dong (moi lan ghi labels.csv deu sinh .bak)
 assets/labels.csv.*.bak
 assets/hf_overrides.csv.*.bak
