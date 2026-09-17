@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # Train 1 moc staged tren may GPU truc tiep (khong qua Modal).
-# Tu dung .venv + cai deps (1 lan) roi chay train.py voi cau hinh chuan 7B bf16 LoRA.
+# Dung uv nhu run_train.sh: tu dung .venv + cai deps (1 lan) roi chay
+# train.py voi cau hinh chuan 7B bf16 LoRA, chay nen bang nohup.
 #
 # Cach dung:
 #   export HF_TOKEN=<token owner tranhuy67896262>   # hoac ghi HF_TOKEN=... vao .env.dev
@@ -19,6 +20,9 @@ RUN=${5:?can run-name (vd run-15k)}
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT"
 
+export UV_LINK_MODE="${UV_LINK_MODE:-copy}"
+export HF_HOME="${HF_HOME:-$PWD/.hf_cache}"
+
 if [ -f .env.dev ]; then
   set -a
   # shellcheck disable=SC1091
@@ -27,21 +31,44 @@ if [ -f .env.dev ]; then
 fi
 : "${HF_TOKEN:?chua co HF_TOKEN - export HF_TOKEN hoac ghi vao .env.dev}"
 
-if [ ! -d .venv ]; then
-  python3 -m venv .venv
+# Cai uv neu chua co (thay pip/venv - nhanh hon nhieu)
+if ! command -v uv >/dev/null 2>&1; then
+  echo "Dang cai uv..."
+  python3 -m pip install -q uv
 fi
-# shellcheck disable=SC1091
-source .venv/bin/activate
 
-if [ ! -f .venv/.setup_done ]; then
-  pip install --upgrade pip
-  pip install torch --index-url https://download.pytorch.org/whl/cu128
-  pip install -r requirements.txt
-  touch .venv/.setup_done
+# Chon python: uu tien .venv (tao bang uv), khong thi python he thong
+if [ -x ".venv/bin/python" ]; then
+  PYTHON=".venv/bin/python"
+else
+  PYTHON="$(command -v python3 || command -v python || echo python3)"
+  echo "Tao .venv bang uv..."
+  uv venv .venv
+  PYTHON=".venv/bin/python"
 fi
+echo "Python: $("$PYTHON" --version 2>/dev/null || echo "khong xac dinh")"
+
+# torch/torchvision ban CUDA (PyPI mac dinh la ban CPU)
+if ! "$PYTHON" -c "import torch, torchvision; assert torch.cuda.is_available()" 2>/dev/null; then
+  echo "Dang cai torch + torchvision ban CUDA..."
+  uv pip install --python "$PYTHON" torch torchvision --index-url https://download.pytorch.org/whl/cu128
+fi
+
+# flash-attn best-effort (tang toc A100/H100, thieu thi fallback sdpa)
+if ! "$PYTHON" -c "import flash_attn" 2>/dev/null; then
+  uv pip install --python "$PYTHON" flash-attn 2>/dev/null || echo "[WARN] Bo qua flash-attn."
+fi
+
+# requirements (transformers, peft, ...)
+if ! "$PYTHON" -c "import transformers, peft, torchvision" 2>/dev/null; then
+  echo "Dang cai requirements..."
+  uv pip install --python "$PYTHON" -r requirements.txt
+fi
+
+echo "GPU: $("$PYTHON" -c "import torch; print(torch.cuda.get_device_name(0))" 2>/dev/null || echo 'CPU')"
 
 LOG="train-${RUN}.log"
-nohup python scripts/train.py \
+nohup "$PYTHON" scripts/train.py \
   --dataset tranhuy67896262/Viet-Handwriting-OCR-v2-local \
   --model tranhuy67896262/Qwen2.5-VL-7B-Instruct-private \
   --start-samples "$START" --max-samples "$MAX" --no-4bit --batch-size 4 \
