@@ -5,9 +5,10 @@
 #
 # Cach dung:
 #   export HF_TOKEN=<token owner tranhuy67896262>   # hoac ghi HF_TOKEN=... vao .env.dev
-#   ./scripts/stage_train.sh <start> <max> <init_rev> <hub_rev> <run_name>
+#   ./scripts/stage_train.sh <start> <max> <init_rev> <hub_rev> <run_name> [save_steps]
 # VD moc 15k:
 #   ./scripts/stage_train.sh 5000 15000 stage-5k stage-15k run-15k
+#   ./scripts/stage_train.sh 5000 15000 stage-5k stage-15k run-15k 100  # push/giua-chung moi 100 step
 # Xem tien do: tail -f train-run-15k.log
 set -euo pipefail
 
@@ -16,6 +17,7 @@ MAX=${2:?can max-samples (vd 15000)}
 INIT_REV=${3:?can init revision (vd stage-5k)}
 HUB_REV=${4:?can hub-revision (vd stage-15k)}
 RUN=${5:?can run-name (vd run-15k)}
+SAVE_STEPS=${6:-100}
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT"
@@ -74,7 +76,8 @@ nohup "$PYTHON" scripts/train.py \
   --start-samples "$START" --max-samples "$MAX" --no-4bit --batch-size 4 \
   --gradient-accumulation-steps 4 --lr 2e-5 --epochs 1 \
   --init-adapter "tranhuy67896262/qwen25vl-7b-vi-hwr-lora@${INIT_REV}" \
-  --push --push-every-save --hub-repo tranhuy67896262/qwen25vl-7b-vi-hwr-lora \
+  --push --push-every-save --save-steps "$SAVE_STEPS" \
+  --hub-repo tranhuy67896262/qwen25vl-7b-vi-hwr-lora \
   --hub-revision "$HUB_REV" --run-name "$RUN" \
   > "$LOG" 2>&1 &
 echo "Dang chay ${RUN} (PID $!), log: ${LOG}"
