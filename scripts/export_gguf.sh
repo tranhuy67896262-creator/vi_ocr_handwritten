@@ -5,7 +5,7 @@ cd "$(dirname "$0")/.."
 # Export GGUF từ merged HF model (gom ca text model + mmproj vision).
 # Bước 1: python scripts/export_merged.py        (cần trước)
 # Bước 2: ./scripts/export_gguf.sh                (convert + quantize + mmproj + Modelfile)
-# Output trong OUT_DIR: *-f16.gguf, *-Q6_K.gguf, mmproj-*.gguf, Modelfile (FROM + ADAPTER + SYSTEM OCR).
+# Output trong OUT_DIR: *-f16.gguf, *-Q6_K.gguf, mmproj-*.gguf, Modelfile (dual-FROM + SYSTEM OCR).
 #
 # Biến môi trường tuỳ chọn:
 #   LLAMA_CPP_DIR  thư mục llama.cpp (mặc định /content/llama.cpp)
@@ -68,7 +68,7 @@ echo "Convert mmproj (projector vision - OCR anh can file nay)..."
     || echo "[WARN] convert mmproj that bai (llama.cpp cu?). Tiep tuc khong co mmproj."
 
 # mmproj: tim file thuc te (converter co the dat ten hoi khac), khong doan ten.
-# Ollama nap vision qua Modelfile (FROM text + ADAPTER mmproj).
+# Ollama ban moi bo ADAPTER -> nap vision qua dual-FROM (2 dong FROM: text + mmproj).
 MMPROJ="$(ls "$OUT_DIR"/mmproj-*.gguf 2>/dev/null | head -n 1 || true)"
 if [ -z "$MMPROJ" ]; then
     echo "[WARN] Khong thay file mmproj-*.gguf trong $OUT_DIR."
@@ -83,7 +83,7 @@ else
     OLLAMA_SYSTEM="${OLLAMA_SYSTEM:-You are an AI assistant specialized in OCR. Extract the exact text from the image (handwritten or printed), preserving spelling, punctuation and line structure. Return only the text, without any extra explanation.}"
     cat > "$OUT_DIR/Modelfile" <<EOF
 FROM ./$(basename "$OLLAMA_GGUF")
-ADAPTER ./$(basename "$MMPROJ")
+FROM ./$(basename "$MMPROJ")
 SYSTEM """$OLLAMA_SYSTEM"""
 PARAMETER temperature 0.1
 PARAMETER num_ctx 4096
