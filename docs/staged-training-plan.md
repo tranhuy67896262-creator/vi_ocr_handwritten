@@ -148,7 +148,7 @@ cd models/gguf-stage-15k && ollama create qwen25vl-7b-vi-hwr-15k -f Modelfile
 |---|---|---|---|---|---|---|
 | base (chưa train) | — | — | — | 0.1533 | 0.2721 | đo trên 100 mẫu test |
 | stage-5k | 0→5000 | 5000 | 313 | 0.0643 | 0.1622 | −58% CER. GGUF Q6_K + mmproj → `tranhuythang9999/qwen25vl-7b-vi-hwr-5k` trên Ollama Hub. Test 10 ảnh: 4/10 khớp tuyệt đối, còn lại sai nhỏ |
-| stage-15k | 5000→20000 | 15000 | 938 | … | … | LƯU Ý: lệnh cũ truyền nhầm `--max-samples 15000` (tưởng end-offset) nên lát rộng 15k thay vì 10k. Vẫn data mới, giữ run. Các mốc sau dùng count đúng |
+| stage-15k | 5000→20000 | 15000 | 938 | 0.0507 | 0.1299 | −21% CER vs 5k. LƯU Ý: lệnh cũ truyền nhầm `--max-samples 15000` (tưởng end-offset) nên lát rộng 15k thay vì 10k. Vẫn data mới, giữ run. Các mốc sau dùng count đúng |
 | stage-25k | 20000→30000 | 10000 | … | … | … | chờ (count=10000, KHÔNG phải max=25000) |
 | stage-35k | 30000→40000 | 10000 | … | … | … | chờ |
 | stage-45k | 40000→50000 | 10000 | … | … | … | chờ |
