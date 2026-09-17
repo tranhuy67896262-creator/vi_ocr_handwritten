@@ -146,6 +146,31 @@ cd models/gguf-stage-15k && ollama create qwen25vl-7b-vi-hwr-15k -f Modelfile
 
 Quy tắc lên mốc: CER giảm tiếp → lên; đứng yên/tăng → dừng, xem xét cumulative hoặc giảm lr.
 
+### Chi tiết mốc stage-5k (mốc đầu, chạy tay — mẫu cho các mốc sau)
+
+```bash
+python scripts/train.py \
+  --dataset tranhuy67896262/Viet-Handwriting-OCR-v2-local \
+  --model tranhuy67896262/Qwen2.5-VL-7B-Instruct-private \
+  --max-samples 5000 --no-4bit --batch-size 4 \
+  --gradient-accumulation-steps 4 --lr 2e-5 --epochs 1 \
+  --push --push-every-save --hub-repo tranhuy67896262/qwen25vl-7b-vi-hwr-lora \
+  --hub-revision stage-5k --run-name run-5k
+# (không --init-adapter vì là mốc đầu; --start-samples mặc định 0)
+```
+
+- 313 steps, LoRA bf16 R32/alpha64 (trainable 1.13%), KL bật.
+- Adapter: `models/qwen25vl-7b-vi-hwr-lora-bf16/` + nhánh Hub `stage-5k`
+  (`adapter_model.safetensors` 381MB, kèm `adapter_config.json`, tokenizer…).
+- Eval 100 mẫu test: base CER 0.1533/WER 0.2721 → stage-5k CER 0.0643/WER 0.1622.
+- Xuất bản: `export_merged.py` (fix `peft` không hiểu `@revision` bằng
+  `snapshot_download(..., revision='stage-5k', local_dir='models/adapter-stage-5k')`)
+  → `export_gguf.sh` (Q6_K + mmproj + Modelfile dual-FROM)
+  → `ollama create qwen25vl-7b-vi-hwr-5k` → push `tranhuythang9999/qwen25vl-7b-vi-hwr-5k`.
+- Test 10 ảnh qua Ollama: 4/10 khớp tuyệt đối (`img_00/03/04` + gần đúng `07/09`
+  chỉ lệch dấu câu/quotes), sai nhỏ ở chữ dễ nhầm (`rằng→sang`, `cỏ mọc→cổ mộc`,
+  `Mibelcam→Mibeclam`), 1 ảnh sai nặng (`img_02`).
+
 ## 6. Rủi ro & cách tránh
 
 | Rủi ro | Cách tránh |
