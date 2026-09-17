@@ -89,7 +89,7 @@ nohup "$PYTHON" scripts/train.py \
   --init-adapter "tranhuy67896262/qwen25vl-7b-vi-hwr-lora@${INIT_REV}" \
   --push --push-every-save --save-steps "$SAVE_STEPS" \
   --hub-repo tranhuy67896262/qwen25vl-7b-vi-hwr-lora \
-  --hub-revision "$HUB_REV" --run-name "$RUN" --resume \
+  --hub-revision "$HUB_REV" --run-name "$RUN" --resume --auto-progress \
   > "$LOG" 2>&1 &
 else
 nohup "$PYTHON" scripts/train.py \
@@ -100,7 +100,7 @@ nohup "$PYTHON" scripts/train.py \
   --init-adapter "tranhuy67896262/qwen25vl-7b-vi-hwr-lora@${INIT_REV}" \
   --push --push-every-save --save-steps "$SAVE_STEPS" \
   --hub-repo tranhuy67896262/qwen25vl-7b-vi-hwr-lora \
-  --hub-revision "$HUB_REV" --run-name "$RUN" \
+  --hub-revision "$HUB_REV" --run-name "$RUN" --auto-progress \
   > "$LOG" 2>&1 &
 fi
 echo "Dang chay ${RUN} (PID $!), log: ${LOG}"

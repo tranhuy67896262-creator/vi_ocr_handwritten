@@ -5,6 +5,7 @@ from datetime import datetime
 from pathlib import Path
 
 import torch
+from huggingface_hub import HfApi
 from transformers import Trainer, TrainerCallback, TrainingArguments
 
 from src.datasets.collator import DataCollatorForQwenVL
@@ -66,6 +67,24 @@ def _latest_checkpoint(checkpoints_dir):
     return max(ckpts)[1] if ckpts else None
 
 
+# File tiến độ đi kèm mỗi snapshot push (để máy khác --auto-progress tính lát còn lại).
+PROGRESS_FILENAME = "stage_progress.json"
+
+
+def _write_progress_file(path, *, start_samples, slice_total, trained_samples,
+                         global_step, hub_revision):
+    """Ghi JSON tiến độ lát đang train (số mẫu đã xong ≈ global_step * eff_batch)."""
+    payload = {
+        "start_samples": start_samples,
+        "slice_total": slice_total,
+        "trained_samples": trained_samples,
+        "global_step": global_step,
+        "hub_revision": hub_revision,
+    }
+    Path(path).write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
+    return payload
+
+
 class PushOnSaveCallback(TrainerCallback):
     """Push adapter + processor lên Hub mỗi lần lưu checkpoint.
 
@@ -74,20 +93,32 @@ class PushOnSaveCallback(TrainerCallback):
     train tiếp (chỉ mất tối đa ``save_steps`` step + reset LR).
     """
 
-    def __init__(self, model, processor, hub_repo_id, token, revision):
+    def __init__(self, model, processor, hub_repo_id, token, revision,
+                 start_samples=0, slice_total=0, eff_batch=1):
         self.model = model
         self.processor = processor
         self.hub_repo_id = hub_repo_id
         self.token = token
         self.revision = revision
+        self.slice = {"start": start_samples, "total": slice_total,
+                      "eff_batch": max(eff_batch, 1)}
 
     def on_save(self, args, state, control, **kwargs):
-        """Gọi sau mỗi checkpoint: push snapshot hiện tại lên Hub."""
+        """Gọi sau mỗi checkpoint: push snapshot + file tiến độ lên Hub."""
         if not state.is_world_process_zero:
             return control
         try:
             self.model.push_to_hub(self.hub_repo_id, token=self.token, revision=self.revision)
             self.processor.push_to_hub(self.hub_repo_id, token=self.token, revision=self.revision)
+            trained = min(state.global_step * self.slice["eff_batch"], self.slice["total"])
+            progress_path = Path(args.output_dir) / PROGRESS_FILENAME
+            _write_progress_file(
+                progress_path, start_samples=self.slice["start"],
+                slice_total=self.slice["total"], trained_samples=trained,
+                global_step=state.global_step, hub_revision=self.revision)
+            HfApi(token=self.token).upload_file(
+                path_or_fileobj=str(progress_path), path_in_repo=PROGRESS_FILENAME,
+                repo_id=self.hub_repo_id, revision=self.revision)
         except Exception as exc:
             # HF sập/lỗi mạng không được giết run — train tiếp, lần save sau thử lại.
             print(f"[WARN] Push snapshot thất bại (train vẫn tiếp tục): {type(exc).__name__}: {exc}")
@@ -96,7 +127,8 @@ class PushOnSaveCallback(TrainerCallback):
 
 def train(config, model, processor, train_ds, eval_ds=None, push=False, hub_repo_id="",
           use_4bit=None, resume=False, save_steps=None,
-          hub_revision=None, run_name=None, init_adapter=None, push_every_save=False):
+          hub_revision=None, run_name=None, init_adapter=None, push_every_save=False,
+          start_samples=0):
     """Train LoRA, lưu adapter + metadata (push Hub nếu cần), ghi registry.
 
     - ``hub_revision``: nhánh đích trên Hub khi push (vd ``stage-10k``) — để giữ
@@ -145,7 +177,10 @@ def train(config, model, processor, train_ds, eval_ds=None, push=False, hub_repo
         if not hub_repo_id:
             raise ValueError("--push-every-save cần --hub-repo <owner>/<repo>.")
         trainer.add_callback(PushOnSaveCallback(
-            model, processor, hub_repo_id, config.HF_TOKEN, hub_revision
+            model, processor, hub_repo_id, config.HF_TOKEN, hub_revision,
+            start_samples=start_samples,
+            slice_total=len(train_ds) if train_ds is not None else 0,
+            eff_batch=eff_batch,
         ))
     resume_path = None
     if resume:

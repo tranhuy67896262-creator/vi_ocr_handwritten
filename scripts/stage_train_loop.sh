@@ -106,7 +106,7 @@ while [ "$S" -lt "$END" ]; do
       --gradient-accumulation-steps 4 --lr 2e-5 --epochs 1 \
       --init-adapter "${HUB_REPO}@${PREV_REV}" \
       --push --push-every-save --save-steps "$SAVE_STEPS" \
-      --hub-repo "$HUB_REPO" --hub-revision "$HUB_REV" --run-name "$RUN" --resume
+      --hub-repo "$HUB_REPO" --hub-revision "$HUB_REV" --run-name "$RUN" --resume --auto-progress
   else
     "$PYTHON" scripts/train.py \
       --dataset "$DATASET" --model "$MODEL" \
@@ -114,7 +114,7 @@ while [ "$S" -lt "$END" ]; do
       --gradient-accumulation-steps 4 --lr 2e-5 --epochs 1 \
       --init-adapter "${HUB_REPO}@${PREV_REV}" \
       --push --push-every-save --save-steps "$SAVE_STEPS" \
-      --hub-repo "$HUB_REPO" --hub-revision "$HUB_REV" --run-name "$RUN"
+      --hub-repo "$HUB_REPO" --hub-revision "$HUB_REV" --run-name "$RUN" --auto-progress
   fi
 
   echo "===== Xong moc ${HUB_REV} - nho eval truoc khi moc sau chay tiep ====="

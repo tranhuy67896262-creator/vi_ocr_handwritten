@@ -64,6 +64,10 @@ def main():
         "Revision của adapter trên Hub khi dùng --init-adapter (thay @revision)"))
     parser.add_argument("--run-name", type=str, default=None, help=(
         "Tên run/mốc — tách thư mục checkpoint + nhãn trong registry (vd stage-10k)"))
+    parser.add_argument("--auto-progress", action="store_true", help=(
+        "Tự đọc stage_progress.json trên nhánh --init-adapter và train tiếp phần còn lại "
+        "(vd lát 15000 mẫu đứt ở 4800 → start=9800, max=10200). Gần đúng khi mất máy hẳn; "
+        "máy còn checkpoint local thì --resume chính xác hơn và được ưu tiên."))
     args = parser.parse_args()
 
     config = Configs()
@@ -109,6 +113,8 @@ def main():
           f" | lr={config.LEARNING_RATE} | epochs={config.NUM_EPOCHS}")
 
     try:
+        if args.auto_progress and not args.resume:
+            args.start_samples, args.max_samples = _apply_progress(config, args)
         train_ds, eval_ds = build_train_eval_datasets(
             config, max_samples=args.max_samples, start_samples=args.start_samples)
     except Exception as exc:
@@ -133,7 +139,8 @@ def main():
               push=args.push or config.PUSH_TO_HUB, hub_repo_id=config.HUB_ADAPTER_ID,
               use_4bit=use_4bit, resume=args.resume, save_steps=args.save_steps,
               hub_revision=args.hub_revision, run_name=args.run_name,
-              init_adapter=init_adapter, push_every_save=args.push_every_save)
+              init_adapter=init_adapter, push_every_save=args.push_every_save,
+              start_samples=args.start_samples)
     except Exception as exc:
         log_and_exit(exc, stage="TRAIN")
 
@@ -145,6 +152,41 @@ def _split_adapter_ref(init_adapter, adapter_revision):
     if "@" in init_adapter and adapter_revision is None:
         init_adapter, _, adapter_revision = init_adapter.rpartition("@")
     return init_adapter, adapter_revision
+
+
+def _apply_progress(config, args):
+    """Đọc stage_progress.json trên nhánh init-adapter, trả (start, max) còn lại.
+
+    Chỉ áp khi file khớp đúng lát đang xin (cùng start + cùng count) và còn dư.
+    Lệch là bỏ qua, train đủ lát như thường. Gần đúng khi mất máy (dataloader
+    shuffle) — máy còn checkpoint local thì dùng --resume thay vì cờ này.
+    """
+    start, count = args.start_samples, args.max_samples
+    repo_id, _, revision = (args.init_adapter or "").rpartition("@")
+    if not repo_id or "/" not in repo_id or not count:
+        return start, count
+    try:
+        from huggingface_hub import hf_hub_download
+
+        import json
+
+        local = hf_hub_download(
+            repo_id=repo_id, filename="stage_progress.json",
+            revision=revision or None, token=config.HF_TOKEN)
+        with open(local, encoding="utf-8") as handle:
+            progress = json.load(handle)
+        done = int(progress.get("trained_samples", 0))
+        if (int(progress.get("start_samples", -1)) == start
+                and int(progress.get("slice_total", -1)) == count
+                and 0 < done < count):
+            start, count = start + done, count - done
+            print(f"[auto-progress] {repo_id}@{revision or 'main'} đã xong {done}/{done + count} "
+                  f"mẫu → train tiếp start={start} max={count}.")
+        else:
+            print("[auto-progress] file tiến độ không khớp lát đang xin — train đủ lát.")
+    except Exception as exc:
+        print(f"[auto-progress] bỏ qua (không đọc được tiến độ): {type(exc).__name__}: {exc}")
+    return start, count
 
 
 if __name__ == "__main__":
