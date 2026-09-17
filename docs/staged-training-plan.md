@@ -123,10 +123,10 @@ python scripts/train.py \
 # từng mốc tiếp theo: <start> = offset, <count> = số lượng (end = start + count).
 # VD lát 5k->15k: start=5000 count=10000 (KHÔNG phải max=15000).
 ./scripts/stage_train.sh 5000  10000 stage-5k  stage-15k run-15k
-./scripts/stage_train.sh 15000 10000 stage-15k stage-25k run-25k
-./scripts/stage_train.sh 25000 10000 stage-25k stage-35k run-35k
-./scripts/stage_train.sh 35000 10000 stage-35k stage-45k run-45k
-./scripts/stage_train.sh 45000 14247 stage-45k stage-60k run-60k
+./scripts/stage_train.sh 20000 5000  stage-15k stage-25k run-25k
+./scripts/stage_train.sh 25000 5000  stage-25k stage-30k run-30k
+# ... cứ thế mỗi mốc 5000 (count), tên nhánh theo cumulative: 35k, 40k, 45k, 50k, 55k,
+# mốc cuối 55000 count 4247 (hết 59247 mẫu).
 
 # xem tiến độ
 tail -f train-run-15k.log
@@ -149,10 +149,14 @@ cd models/gguf-stage-15k && ollama create qwen25vl-7b-vi-hwr-15k -f Modelfile
 | base (chưa train) | — | — | — | 0.1533 | 0.2721 | đo trên 100 mẫu test |
 | stage-5k | 0→5000 | 5000 | 313 | 0.0643 | 0.1622 | −58% CER. GGUF Q6_K + mmproj → `tranhuythang9999/qwen25vl-7b-vi-hwr-5k` trên Ollama Hub. Test 10 ảnh: 4/10 khớp tuyệt đối, còn lại sai nhỏ |
 | stage-15k | 5000→20000 | 15000 | 938 | 0.0507 | 0.1299 | −21% CER vs 5k. LƯU Ý: lệnh cũ truyền nhầm `--max-samples 15000` (tưởng end-offset) nên lát rộng 15k thay vì 10k. Vẫn data mới, giữ run. Các mốc sau dùng count đúng |
-| stage-25k | 20000→30000 | 10000 | … | … | … | chờ (count=10000, KHÔNG phải max=25000) |
-| stage-35k | 30000→40000 | 10000 | … | … | … | chờ |
-| stage-45k | 40000→50000 | 10000 | … | … | … | chờ |
-| stage-60k | 50000→59247 | 9247 | … | … | … | chờ (hết data, count=9247) |
+| stage-25k | 20000→25000 | 5000 | 313 | 0.0484 | 0.1238 | −4.5% CER vs 15k (diminishing returns). Từ đây mỗi mốc 5k mẫu |
+| stage-30k | 25000→30000 | 5000 | … | … | … | chờ |
+| stage-35k | 30000→35000 | 5000 | … | … | … | chờ |
+| stage-40k | 35000→40000 | 5000 | … | … | … | chờ |
+| stage-45k | 40000→45000 | 5000 | … | … | … | chờ |
+| stage-50k | 45000→50000 | 5000 | … | … | … | chờ |
+| stage-55k | 50000→55000 | 5000 | … | … | … | chờ |
+| stage-59k | 55000→59247 | 4247 | … | … | … | chờ (hết data) |
 
 Quy tắc lên mốc: CER giảm tiếp → lên; đứng yên/tăng → dừng, xem xét cumulative hoặc giảm lr.
 
