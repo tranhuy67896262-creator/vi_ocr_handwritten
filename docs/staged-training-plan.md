@@ -110,8 +110,16 @@ Ollama bản mới bỏ `ADAPTER` → Modelfile phải dual-FROM (2 dòng FROM: 
 export HF_TOKEN=<token owner tranhuy67896262>
 chmod +x scripts/stage_train.sh
 
-# từng mốc (start = mốc trước, max = mốc này, init/hub-revision theo mốc)
-# mốc 5k đã chạy tay (không --init-adapter). Từ 15k trở đi dùng script:
+# mốc 5k (mốc đầu, chạy tay vì lúc đó chưa có script — không --init-adapter):
+python scripts/train.py \
+  --dataset tranhuy67896262/Viet-Handwriting-OCR-v2-local \
+  --model tranhuy67896262/Qwen2.5-VL-7B-Instruct-private \
+  --max-samples 5000 --no-4bit --batch-size 4 \
+  --gradient-accumulation-steps 4 --lr 2e-5 --epochs 1 \
+  --push --push-every-save --hub-repo tranhuy67896262/qwen25vl-7b-vi-hwr-lora \
+  --hub-revision stage-5k --run-name run-5k
+
+# từng mốc tiếp theo (start = mốc trước, max = mốc này, init/hub-revision theo mốc):
 ./scripts/stage_train.sh 5000  15000 stage-5k  stage-15k run-15k
 ./scripts/stage_train.sh 15000 25000 stage-15k stage-25k run-25k
 ./scripts/stage_train.sh 25000 35000 stage-25k stage-35k run-35k
