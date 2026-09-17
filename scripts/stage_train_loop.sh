@@ -84,6 +84,9 @@ while [ "$S" -lt "$END" ]; do
   if [ "$E" -gt "$END" ]; then
     E="$END"
   fi
+  # CHU Y: --max-samples la SO LUONG (count), khong phai end-offset
+  # (dataset.py: end = start + max). Nen truyen count = E - S.
+  COUNT=$((E - S))
   K=$((E / 1000))
   HUB_REV="stage-${K}k"
   RUN="run-${K}k"
@@ -99,7 +102,7 @@ while [ "$S" -lt "$END" ]; do
   if [ -n "$DO_RESUME" ]; then
     "$PYTHON" scripts/train.py \
       --dataset "$DATASET" --model "$MODEL" \
-      --start-samples "$S" --max-samples "$E" --no-4bit --batch-size 4 \
+      --start-samples "$S" --max-samples "$COUNT" --no-4bit --batch-size 4 \
       --gradient-accumulation-steps 4 --lr 2e-5 --epochs 1 \
       --init-adapter "${HUB_REPO}@${PREV_REV}" \
       --push --push-every-save --save-steps "$SAVE_STEPS" \
@@ -107,7 +110,7 @@ while [ "$S" -lt "$END" ]; do
   else
     "$PYTHON" scripts/train.py \
       --dataset "$DATASET" --model "$MODEL" \
-      --start-samples "$S" --max-samples "$E" --no-4bit --batch-size 4 \
+      --start-samples "$S" --max-samples "$COUNT" --no-4bit --batch-size 4 \
       --gradient-accumulation-steps 4 --lr 2e-5 --epochs 1 \
       --init-adapter "${HUB_REPO}@${PREV_REV}" \
       --push --push-every-save --save-steps "$SAVE_STEPS" \

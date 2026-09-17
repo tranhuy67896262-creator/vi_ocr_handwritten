@@ -5,15 +5,17 @@
 #
 # Cach dung:
 #   export HF_TOKEN=<token owner tranhuy67896262>   # hoac ghi HF_TOKEN=... vao .env.dev
-#   ./scripts/stage_train.sh <start> <max> <init_rev> <hub_rev> <run_name> [save_steps]
-# VD moc 15k:
-#   ./scripts/stage_train.sh 5000 15000 stage-5k stage-15k run-15k
-#   ./scripts/stage_train.sh 5000 15000 stage-5k stage-15k run-15k 100  # push/giua-chung moi 100 step
+#   ./scripts/stage_train.sh <start> <count> <init_rev> <hub_rev> <run_name> [save_steps]
+# CHU Y: <count> = SO LUONG mau (khong phai end-offset): end = start + count
+# (dataset.py: end = start + max_samples). VD moc 5k->15k: start=5000 count=10000.
+# VD:
+#   ./scripts/stage_train.sh 5000 10000 stage-5k stage-15k run-15k
+#   ./scripts/stage_train.sh 5000 10000 stage-5k stage-15k run-15k 50  # push moi 50 step
 # Xem tien do: tail -f train-run-15k.log
 set -euo pipefail
 
-START=${1:?can start-samples (vd 5000)}
-MAX=${2:?can max-samples (vd 15000)}
+START=${1:?can start-samples = offset bo qua (vd 5000)}
+MAX=${2:?can max-samples = SO LUONG mau (vd 10000 cho lat 5k->15k)}
 INIT_REV=${3:?can init revision (vd stage-5k)}
 HUB_REV=${4:?can hub-revision (vd stage-15k)}
 RUN=${5:?can run-name (vd run-15k)}

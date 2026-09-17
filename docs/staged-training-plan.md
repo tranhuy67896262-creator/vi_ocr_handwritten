@@ -111,6 +111,7 @@ export HF_TOKEN=<token owner tranhuy67896262>
 chmod +x scripts/stage_train.sh
 
 # mốc 5k (mốc đầu, chạy tay vì lúc đó chưa có script — không --init-adapter):
+# --max-samples = SỐ LƯỢNG (count), lát 0->5000:
 python scripts/train.py \
   --dataset tranhuy67896262/Viet-Handwriting-OCR-v2-local \
   --model tranhuy67896262/Qwen2.5-VL-7B-Instruct-private \
@@ -119,12 +120,13 @@ python scripts/train.py \
   --push --push-every-save --hub-repo tranhuy67896262/qwen25vl-7b-vi-hwr-lora \
   --hub-revision stage-5k --run-name run-5k
 
-# từng mốc tiếp theo (start = mốc trước, max = mốc này, init/hub-revision theo mốc):
-./scripts/stage_train.sh 5000  15000 stage-5k  stage-15k run-15k
-./scripts/stage_train.sh 15000 25000 stage-15k stage-25k run-25k
-./scripts/stage_train.sh 25000 35000 stage-25k stage-35k run-35k
-./scripts/stage_train.sh 35000 45000 stage-35k stage-45k run-45k
-./scripts/stage_train.sh 45000 59247 stage-45k stage-60k run-60k
+# từng mốc tiếp theo: <start> = offset, <count> = số lượng (end = start + count).
+# VD lát 5k->15k: start=5000 count=10000 (KHÔNG phải max=15000).
+./scripts/stage_train.sh 5000  10000 stage-5k  stage-15k run-15k
+./scripts/stage_train.sh 15000 10000 stage-15k stage-25k run-25k
+./scripts/stage_train.sh 25000 10000 stage-25k stage-35k run-35k
+./scripts/stage_train.sh 35000 10000 stage-35k stage-45k run-45k
+./scripts/stage_train.sh 45000 14247 stage-45k stage-60k run-60k
 
 # xem tiến độ
 tail -f train-run-15k.log
@@ -142,15 +144,15 @@ cd models/gguf-stage-15k && ollama create qwen25vl-7b-vi-hwr-15k -f Modelfile
 
 ## 7. Nhật ký chạy thực tế
 
-| Mốc | Lát data | Steps | CER | WER | Ghi chú |
-|---|---|---|---|---|---|
-| base (chưa train) | — | — | 0.1533 | 0.2721 | đo trên 100 mẫu test |
-| stage-5k | 0→5000 | 313 | 0.0643 | 0.1622 | −58% CER. GGUF Q6_K + mmproj → `tranhuythang9999/qwen25vl-7b-vi-hwr-5k` trên Ollama Hub. Test 10 ảnh: 4/10 khớp tuyệt đối, còn lại sai nhỏ |
-| stage-15k | 5000→15000 | 938 | … | … | đang train (log: collator + LoRA 1.13% OK) |
-| stage-25k | 15000→25000 | … | … | … | chờ |
-| stage-35k | 25000→35000 | … | … | … | chờ |
-| stage-45k | 35000→45000 | … | … | … | chờ |
-| stage-60k | 45000→59247 | … | … | … | chờ (hết data) |
+| Mốc | Lát data (offset→end) | Mẫu mới | Steps | CER | WER | Ghi chú |
+|---|---|---|---|---|---|---|
+| base (chưa train) | — | — | — | 0.1533 | 0.2721 | đo trên 100 mẫu test |
+| stage-5k | 0→5000 | 5000 | 313 | 0.0643 | 0.1622 | −58% CER. GGUF Q6_K + mmproj → `tranhuythang9999/qwen25vl-7b-vi-hwr-5k` trên Ollama Hub. Test 10 ảnh: 4/10 khớp tuyệt đối, còn lại sai nhỏ |
+| stage-15k | 5000→20000 | 15000 | 938 | … | … | LƯU Ý: lệnh cũ truyền nhầm `--max-samples 15000` (tưởng end-offset) nên lát rộng 15k thay vì 10k. Vẫn data mới, giữ run. Các mốc sau dùng count đúng |
+| stage-25k | 20000→30000 | 10000 | … | … | … | chờ (count=10000, KHÔNG phải max=25000) |
+| stage-35k | 30000→40000 | 10000 | … | … | … | chờ |
+| stage-45k | 40000→50000 | 10000 | … | … | … | chờ |
+| stage-60k | 50000→59247 | 9247 | … | … | … | chờ (hết data, count=9247) |
 
 Quy tắc lên mốc: CER giảm tiếp → lên; đứng yên/tăng → dừng, xem xét cumulative hoặc giảm lr.
 
