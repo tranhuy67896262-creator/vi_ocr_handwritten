@@ -20,7 +20,7 @@ def log_and_exit(exc, stage="", extra_hint=""):
     if exc_type == "OutOfMemoryError" or "CUDA out of memory" in msg:
         hint = (
             "GPU hết VRAM. Giảm --batch-size 1, thêm --no-kl, giảm --max-seq-len "
-            "(vd 512), hoặc đổi model nhỏ hơn (Qwen/Qwen2.5-VL-3B-Instruct)."
+            "(vd 512), hoặc đổi model nhỏ hơn (tranhuy67896262/Qwen2.5-VL-3B-Instruct-private)."
         )
     elif exc_type in ("DatasetNotFoundError",) or "doesn't exist on the Hub" in msg:
         hint = "Tên dataset không tồn tại hoặc không truy cập được (private/gated/bucket). Kiểm tra token HF."

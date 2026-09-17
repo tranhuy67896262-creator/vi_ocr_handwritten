@@ -16,8 +16,8 @@ from configs.configs import Configs
 SCRIPT = PROJECT_ROOT / "scripts"
 
 MODEL_CHOICES = [
-    "Qwen/Qwen2.5-VL-3B-Instruct",
-    "Qwen/Qwen2.5-VL-7B-Instruct",
+    "tranhuy67896262/Qwen2.5-VL-3B-Instruct-private",
+    "tranhuy67896262/Qwen2.5-VL-7B-Instruct-private",
 ]
 
 
@@ -466,7 +466,7 @@ def build_app():
             "☁️ Dùng ké GPU Colab: "
             "[mở notebook Colab]"
             "(https://colab.research.google.com/notebook"
-            "#fileId=https%3A//huggingface.co/Qwen/Qwen2.5-VL-7B-Instruct.ipynb)"
+            "#fileId=https%3A//huggingface.co/tranhuy67896262/Qwen2.5-VL-7B-Instruct-private.ipynb)"
         )
 
         with gr.Tab("Fine-tune"):
@@ -499,8 +499,9 @@ def build_app():
                 "🔗 Dataset: "
                 "[tranhuy67896262/Viet-Handwriting-OCR-v2-local]"
                 "(https://huggingface.co/datasets/tranhuy67896262/Viet-Handwriting-OCR-v2-local) | "
-                "Models: [Qwen2.5-VL-7B-Instruct](https://huggingface.co/Qwen/Qwen2.5-VL-7B-Instruct) · "
-                "[Qwen2.5-VL-3B-Instruct](https://huggingface.co/Qwen/Qwen2.5-VL-3B-Instruct)"
+                "Models: [Qwen2.5-VL-7B-Instruct]"
+                "(https://huggingface.co/tranhuy67896262/Qwen2.5-VL-7B-Instruct-private) · "
+                "[Qwen2.5-VL-3B-Instruct](https://huggingface.co/tranhuy67896262/Qwen2.5-VL-3B-Instruct-private)"
             )
             train_btn = gr.Button("▶ Fine-tune", variant="primary")
             train_log = gr.Textbox(label="Log", lines=20, max_lines=30, autoscroll=True, elem_classes=["log-scroll"])

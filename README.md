@@ -81,13 +81,13 @@ Muốn train ngay từ lệnh (không qua UI): thêm cờ `--train`:
 1. Upload toàn bộ project vào Colab (kéo-thả vào `/content/`).
 2. Mở terminal (hoặc 1 cell) — truyền token luôn, script tự tạo `.env.dev`:
 ```bash
-!chmod +x run_train.sh && ./run_train.sh hf_xxxxx --train --model Qwen/Qwen2.5-VL-3B-Instruct --batch-size 1 --max-samples 100
+!chmod +x run_train.sh && ./run_train.sh hf_xxxxx --train --model tranhuy67896262/Qwen2.5-VL-3B-Instruct-private --batch-size 1 --max-samples 100
 ```
 Hoặc bỏ qua token nếu đã upload sẵn `.env.dev` / dán token ở tab Settings. Lấy token tại https://huggingface.co/settings/tokens.
 
 Script tự cài dependencies + kiểm tra GPU + đọc `HF_TOKEN` từ `.env.dev`. Mọi flag train truyền thẳng qua được: `./run_train.sh --train --epochs 2 --lr 1e-5`.
 
-**Pipeline kiểm tra đầy đủ cho 7B:** các script ở thư mục gốc được thiết kế cho `Qwen/Qwen2.5-VL-7B-Instruct` và sẽ dừng nếu thiếu adapter, GGUF, `mmproj`, Ollama hoặc output OCR.
+**Pipeline kiểm tra đầy đủ cho 7B:** các script ở thư mục gốc được thiết kế cho `tranhuy67896262/Qwen2.5-VL-7B-Instruct-private` và sẽ dừng nếu thiếu adapter, GGUF, `mmproj`, Ollama hoặc output OCR.
 
 ```bash
 # A100 40GB: bắt đầu batch 2, có thể tăng lên 4 nếu còn VRAM
@@ -149,7 +149,7 @@ python -c "import json,glob; p=sorted(glob.glob('models/checkpoints/<run>/checkp
 
 **Check CER giữa chừng (máy khác, không đụng GPU train):** nhờ `--push-every-save`, snapshot mới nhất luôn nằm trên Hub — mở máy khác eval CER ngay khi train đang chạy:
 ```bash
-python scripts/eval_ocr.py --model Qwen/Qwen2.5-VL-7B-Instruct \
+python scripts/eval_ocr.py --model tranhuy67896262/Qwen2.5-VL-7B-Instruct-private \
   --adapter <owner>/qwen25vl-7b-vi-hwr-lora --adapter-revision stage-full \
   --num-test 100 --run-name mid-500
 ```
@@ -160,7 +160,7 @@ So trend CER theo mốc: base → step ~500 → ~1500 → ~3000 → xong. CER gi
 **Full 7B trên Modal L40S (48GB):**
 ```bash
 ./run_train.sh --train \
-  --model Qwen/Qwen2.5-VL-7B-Instruct --no-4bit \
+  --model tranhuy67896262/Qwen2.5-VL-7B-Instruct-private --no-4bit \
   --batch-size 4 --gradient-accumulation-steps 4 --lr 2e-5 --epochs 1 \
   --save-steps 100 --push --push-every-save \
   --hub-repo <owner>/qwen25vl-7b-vi-hwr-lora \
@@ -174,7 +174,7 @@ So trend CER theo mốc: base → step ~500 → ~1500 → ~3000 → xong. CER gi
 - 5k (~45 phút, ~312 step): check chất lượng — đủ rẻ để thử, đủ lớn để CER có ý nghĩa. CER tốt hơn base rõ rệt thì full mới đáng tiền; còn tệ thì dừng xem lại trước khi đốt 9h.
 ```bash
 ./run_train.sh --train \
-  --model Qwen/Qwen2.5-VL-7B-Instruct --no-4bit \
+  --model tranhuy67896262/Qwen2.5-VL-7B-Instruct-private --no-4bit \
   --max-samples 5000 --batch-size 4 --gradient-accumulation-steps 4 \
   --lr 2e-5 --epochs 1 --save-steps 100 \
   --push --push-every-save \
@@ -183,8 +183,8 @@ So trend CER theo mốc: base → step ~500 → ~1500 → ~3000 → xong. CER gi
 ```
 So base vs adapter 5k trên cùng 200 mẫu test:
 ```bash
-python scripts/eval_ocr.py --model Qwen/Qwen2.5-VL-7B-Instruct --num-test 200
-python scripts/eval_ocr.py --model Qwen/Qwen2.5-VL-7B-Instruct --adapter <owner>/qwen25vl-7b-vi-hwr-lora --adapter-revision stage-5k --num-test 200
+python scripts/eval_ocr.py --model tranhuy67896262/Qwen2.5-VL-7B-Instruct-private --num-test 200
+python scripts/eval_ocr.py --model tranhuy67896262/Qwen2.5-VL-7B-Instruct-private --adapter <owner>/qwen25vl-7b-vi-hwr-lora --adapter-revision stage-5k --num-test 200
 ```
 Lưu ý: `--max-samples 5000` lấy 5000 mẫu đầu (không shuffle) — đủ để validate, chốt cuối cùng vẫn bằng bản full + eval test split.
 
@@ -198,7 +198,7 @@ python scripts/train.py --max-samples 100
 
 # Train đầy đủ / đổi model
 python scripts/train.py
-python scripts/train.py --model Qwen/Qwen2.5-VL-7B-Instruct
+python scripts/train.py --model tranhuy67896262/Qwen2.5-VL-7B-Instruct-private
 
 # Run dài (Colab hay đứt): lưu checkpoint dày + resume khi chạy lại
 python scripts/train.py --save-steps 100
@@ -212,17 +212,17 @@ python scripts/train.py --epochs 2 --lr 1e-5 --lora-r 16 --lora-alpha 32
 python scripts/eval_ocr.py --image path/to/anh.jpg
 python scripts/eval_ocr.py --image path/to/scan.pdf
 python scripts/eval_ocr.py --image path/to/file.docx
-python scripts/eval_ocr.py --image path/to/anh.jpg --adapter <owner>/qwen25vl-3b-vi-hwr-lora --model Qwen/Qwen2.5-VL-3B-Instruct
+python scripts/eval_ocr.py --image path/to/anh.jpg --adapter <owner>/qwen25vl-3b-vi-hwr-lora --model tranhuy67896262/Qwen2.5-VL-3B-Instruct-private
 
 # Đánh giá CER/WER trên test split
 python scripts/eval_ocr.py --num-test 200
-python scripts/eval_ocr.py --model Qwen/Qwen2.5-VL-7B-Instruct \
+python scripts/eval_ocr.py --model tranhuy67896262/Qwen2.5-VL-7B-Instruct-private \
   --adapter models/qwen25vl-7b-vi-hwr-lora --num-test 200
 
 # Export full model → GGUF → Ollama (Linux/Modal, merge 7B cần GPU ~28GB)
 # Bước 1 — merge LoRA vào base:
 python scripts/export_merged.py \
-  --model Qwen/Qwen2.5-VL-7B-Instruct \
+  --model tranhuy67896262/Qwen2.5-VL-7B-Instruct-private \
   --adapter <path-adapter-local-hoac-repo-id> \
   --output models/qwen25vl-7b-vi-hwr-lora-merged
 # Bước 2 — convert GGUF + mmproj + Modelfile (tự clone/build llama.cpp nếu chưa có):
@@ -252,7 +252,7 @@ python scripts/train.py --push --hub-repo <owner>/qwen25vl-3b-vi-hwr-lora
 ```bash
 # 1) Trên Modal — train + push snapshot mỗi 100 step lên nhánh 'running'
 bash run_train.sh hf_xxx --train \
-  --model Qwen/Qwen2.5-VL-3B-Instruct \
+  --model tranhuy67896262/Qwen2.5-VL-3B-Instruct-private \
   --max-samples 1000 --save-steps 100 \
   --push --push-every-save \
   --hub-repo <owner>/qwen25vl-3b-vi-hwr-lora \
@@ -261,7 +261,7 @@ bash run_train.sh hf_xxx --train \
 
 # 2) Modal đứt → sang Colab, kéo snapshot cuối về train tiếp
 bash run_train.sh hf_xxx --train \
-  --model Qwen/Qwen2.5-VL-3B-Instruct \
+  --model tranhuy67896262/Qwen2.5-VL-3B-Instruct-private \
   --max-samples 1000 --save-steps 100 \
   --init-adapter <owner>/qwen25vl-3b-vi-hwr-lora@stage-10k-running \
   --push --push-every-save \
@@ -291,10 +291,10 @@ bash run_train.sh hf_xxx --train \
 
 ```bash
 # A100 40GB: bắt đầu batch 2, thử batch 4 nếu còn VRAM
-./run_train.sh --train --model Qwen/Qwen2.5-VL-7B-Instruct --batch-size 2 --max-samples 100
+./run_train.sh --train --model tranhuy67896262/Qwen2.5-VL-7B-Instruct-private --batch-size 2 --max-samples 100
 
 # H100 80GB: bắt đầu batch 4, có thể thử batch 8
-./run_train.sh --train --model Qwen/Qwen2.5-VL-7B-Instruct --batch-size 4 --max-samples 100
+./run_train.sh --train --model tranhuy67896262/Qwen2.5-VL-7B-Instruct-private --batch-size 4 --max-samples 100
 ```
 
 `ATTN_IMPLEMENTATION="auto"` trong config (flash_attention_2 nếu import được, sdpa nếu không) nên không cần sửa code. Batch size cứ tăng dần tới khi gần đầy VRAM rồi lùi 1 nấc. `gradient_accumulation_steps=8`, nên batch 2 có effective batch 16 và batch 4 có effective batch 32.

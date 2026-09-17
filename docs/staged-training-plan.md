@@ -89,7 +89,7 @@ Với mỗi mốc N (đọc từ `Configs.STAGE_SAMPLES`):
 ## 4. Cấu hình đề xuất (A100 40GB)
 
 ```
-MODEL      Qwen/Qwen2.5-VL-7B-Instruct   (thử --no-4bit = bf16 LoRA, chất lượng tốt hơn QLoRA)
+MODEL      tranhuy67896262/Qwen2.5-VL-7B-Instruct-private   (thử --no-4bit = bf16 LoRA, chất lượng tốt hơn QLoRA)
 MAX_PIXELS 1280*28*28      MAX_SEQ_LEN 1536
 BATCH 4  ACCUM 4  (eff 16)  LR 1e-4  LoRA r=64/α=128  --no-kl
 STAGES     5000 10000 20000 40000 59247

@@ -34,9 +34,9 @@ if [[ ${#HF_TOKEN_ARG[@]} -eq 0 && -z "${HF_TOKEN:-}" ]] && ! grep -q '^HF_TOKEN
 fi
 
 if [[ -n "$MODEL_CHOICE" && -z "${MODEL_NAME:-}" ]]; then
-    MODEL_NAME="Qwen/Qwen2.5-VL-${MODEL_CHOICE^^}-Instruct"
+    MODEL_NAME="tranhuy67896262/Qwen2.5-VL-${MODEL_CHOICE^^}-Instruct-private"
 fi
-MODEL_NAME="${MODEL_NAME:-Qwen/Qwen2.5-VL-7B-Instruct}"
+MODEL_NAME="${MODEL_NAME:-tranhuy67896262/Qwen2.5-VL-7B-Instruct-private}"
 case "$MODEL_NAME" in
     *3B*|*3b*) MODEL_TAG="3b" ;;
     *7B*|*7b*) MODEL_TAG="7b" ;;
