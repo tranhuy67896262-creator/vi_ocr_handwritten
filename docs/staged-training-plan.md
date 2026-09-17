@@ -1,6 +1,8 @@
-# Kế hoạch: Staged training 5 mốc (5k → 59k) + push Hub định kỳ
+# Kế hoạch: Staged training sequential (5k → 60k) + push Hub định kỳ
 
-Trạng thái: **đã triển khai**. Tài liệu này là nguồn tham chiếu cho thay đổi code tương ứng.
+Trạng thái: **đang chạy**. Mốc 5k xong (CER 0.0643), mốc 15k đang train.
+Thực tế chạy = **sequential lát mới-only** (`--start-samples/--max-samples`), KHÔNG cumulative
+như bản nháp cũ. Tài liệu này là nguồn tham chiếu cho thay đổi code tương ứng.
 
 ## 1. Mục tiêu
 
@@ -86,30 +88,63 @@ Với mỗi mốc N (đọc từ `Configs.STAGE_SAMPLES`):
 2. `eval_ocr.py --num-test 300 --adapter <adapter local>` → in CER/WER
 3. append 1 dòng vào `models/stage_results.tsv`
 
-## 4. Cấu hình đề xuất (A100 40GB)
+## 4. Cấu hình thực tế đang chạy (7B bf16 LoRA, máy GPU trực tiếp)
 
 ```
-MODEL      tranhuy67896262/Qwen2.5-VL-7B-Instruct-private   (thử --no-4bit = bf16 LoRA, chất lượng tốt hơn QLoRA)
-MAX_PIXELS 1280*28*28      MAX_SEQ_LEN 1536
-BATCH 4  ACCUM 4  (eff 16)  LR 1e-4  LoRA r=64/α=128  --no-kl
-STAGES     5000 10000 20000 40000 59247
-EVAL       300 dòng test cố định, CER/WER mỗi mốc
+MODEL      tranhuy67896262/Qwen2.5-VL-7B-Instruct-private
+DATASET    tranhuy67896262/Viet-Handwriting-OCR-v2-local (59247 train + 1000 test)
+MODE       LoRA bf16 (--no-4bit), R=32/alpha=64, base đóng băng (trainable ~1.13%)
+BATCH 4  ACCUM 4  (eff 16)  LR 2e-5  epochs 1  KL bật (mặc định)
+STAGES     5k → 15k → 25k → 35k → 45k → 60k  (lát mới-only, sequential)
+EVAL       100 dòng test, CER/WER so với base + mốc trước
+XUẤT BẢN   mỗi mốc: merge → GGUF Q6_K + mmproj → Modelfile dual-FROM → ollama create
 ```
 
-Ước tính: Σ ≈ 8,400 optimizer step (~7–12 h trên A100 40GB với flash-attn, không KL).
+Mỗi mốc chạy bằng `scripts/stage_train.sh` (uv + .venv + nohup, xem §5).
+Ollama bản mới bỏ `ADAPTER` → Modelfile phải dual-FROM (2 dòng FROM: text + mmproj).
 
 ## 5. Lệnh chạy
 
 ```bash
-# smoke test trần VRAM trước khi chạy dài
-python scripts/train.py --max-samples 100 --batch-size 8 --max-seq-len 1536
+# 1 lần duy nhất trên máy mới: script tự dựng .venv + cài deps (uv, torch cu128, requirements)
+export HF_TOKEN=<token owner tranhuy67896262>
+chmod +x scripts/stage_train.sh
 
-# cả 5 mốc, tự push + eval từng mốc
-bash scripts/train_stages.sh --hub-repo <owner>/<repo> --eval-samples 300
+# từng mốc (start = mốc trước, max = mốc này, init/hub-revision theo mốc)
+# mốc 5k đã chạy tay (không --init-adapter). Từ 15k trở đi dùng script:
+./scripts/stage_train.sh 5000  15000 stage-5k  stage-15k run-15k
+./scripts/stage_train.sh 15000 25000 stage-15k stage-25k run-25k
+./scripts/stage_train.sh 25000 35000 stage-25k stage-35k run-35k
+./scripts/stage_train.sh 35000 45000 stage-35k stage-45k run-45k
+./scripts/stage_train.sh 45000 59247 stage-45k stage-60k run-60k
 
-# xem đường cong
-cat models/stage_results.tsv
+# xem tiến độ
+tail -f train-run-15k.log
+
+# eval mốc mới (so với base + mốc trước)
+python scripts/eval_ocr.py --num-test 100 --no-adapter --model <base-private>
+python scripts/eval_ocr.py --num-test 100 --adapter tranhuy67896262/qwen25vl-7b-vi-hwr-lora \
+  --adapter-revision stage-15k --model <base-private>
+
+# xuất bản mốc: merge → GGUF → Ollama
+python scripts/export_merged.py --adapter models/adapter-stage-15k --output models/qwen25vl-7b-vi-hwr-stage-15k-merged
+./scripts/export_gguf.sh models/qwen25vl-7b-vi-hwr-stage-15k-merged models/gguf-stage-15k
+cd models/gguf-stage-15k && ollama create qwen25vl-7b-vi-hwr-15k -f Modelfile
 ```
+
+## 7. Nhật ký chạy thực tế
+
+| Mốc | Lát data | Steps | CER | WER | Ghi chú |
+|---|---|---|---|---|---|
+| base (chưa train) | — | — | 0.1533 | 0.2721 | đo trên 100 mẫu test |
+| stage-5k | 0→5000 | 313 | 0.0643 | 0.1622 | −58% CER. GGUF Q6_K + mmproj → `tranhuythang9999/qwen25vl-7b-vi-hwr-5k` trên Ollama Hub. Test 10 ảnh: 4/10 khớp tuyệt đối, còn lại sai nhỏ |
+| stage-15k | 5000→15000 | 938 | … | … | đang train (log: collator + LoRA 1.13% OK) |
+| stage-25k | 15000→25000 | … | … | … | chờ |
+| stage-35k | 25000→35000 | … | … | … | chờ |
+| stage-45k | 35000→45000 | … | … | … | chờ |
+| stage-60k | 45000→59247 | … | … | … | chờ (hết data) |
+
+Quy tắc lên mốc: CER giảm tiếp → lên; đứng yên/tăng → dừng, xem xét cumulative hoặc giảm lr.
 
 ## 6. Rủi ro & cách tránh
 
