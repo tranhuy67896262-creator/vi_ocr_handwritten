@@ -70,6 +70,26 @@ fi
 echo "GPU: $("$PYTHON" -c "import torch; print(torch.cuda.get_device_name(0))" 2>/dev/null || echo 'CPU')"
 
 LOG="train-${RUN}.log"
+# Tu resume: neu run nay da co checkpoint local (chet giua chung) thi tiep tuc
+# dung step cu thay vi hoc lai tu dau. Dung chuoi co thay mang (tranh unbound
+# variable tren bash cu khi expand mang rong voi set -u).
+DO_RESUME=""
+if ls -d "models/checkpoints/${RUN}"/checkpoint-* >/dev/null 2>&1; then
+  echo "Thay checkpoint local -> resume dung step cu (--resume)."
+  DO_RESUME=1
+fi
+if [ -n "$DO_RESUME" ]; then
+nohup "$PYTHON" scripts/train.py \
+  --dataset tranhuy67896262/Viet-Handwriting-OCR-v2-local \
+  --model tranhuy67896262/Qwen2.5-VL-7B-Instruct-private \
+  --start-samples "$START" --max-samples "$MAX" --no-4bit --batch-size 4 \
+  --gradient-accumulation-steps 4 --lr 2e-5 --epochs 1 \
+  --init-adapter "tranhuy67896262/qwen25vl-7b-vi-hwr-lora@${INIT_REV}" \
+  --push --push-every-save --save-steps "$SAVE_STEPS" \
+  --hub-repo tranhuy67896262/qwen25vl-7b-vi-hwr-lora \
+  --hub-revision "$HUB_REV" --run-name "$RUN" --resume \
+  > "$LOG" 2>&1 &
+else
 nohup "$PYTHON" scripts/train.py \
   --dataset tranhuy67896262/Viet-Handwriting-OCR-v2-local \
   --model tranhuy67896262/Qwen2.5-VL-7B-Instruct-private \
@@ -80,4 +100,5 @@ nohup "$PYTHON" scripts/train.py \
   --hub-repo tranhuy67896262/qwen25vl-7b-vi-hwr-lora \
   --hub-revision "$HUB_REV" --run-name "$RUN" \
   > "$LOG" 2>&1 &
+fi
 echo "Dang chay ${RUN} (PID $!), log: ${LOG}"
