@@ -58,12 +58,14 @@ def convert_to_chat(example, image_col, text_col, system_prompt):
 
 
 def load_dataset_with_fallback(config):
-    """Load dataset theo config (mặc định source gốc 5CD-AI/Viet-Handwriting-OCR-v2).
+    """Load dataset theo config (mặc định mirror private tranhuy67896262/Viet-Handwriting-OCR-v2-local).
 
-    Nếu ``DATASET_NAME`` là thư mục đã lưu bằng ``save_to_disk`` (vd ``data/combined``
-    do ``scripts.labeling merge`` tạo ra) thì đọc trực tiếp từ đĩa.
+    Nếu ``DATASET_NAME`` là thư mục local thì đọc trực tiếp từ đĩa:
+    ``save_to_disk`` (vd ``data/combined`` do ``scripts.labeling merge`` tạo ra)
+    hoặc thư mục chứa file parquet (vd copy từ bucket: ``data/v2-bucket`` với
+    ``data/*.parquet`` đặt tên theo split ``train-*``/``test-*``).
     """
-    candidates = list(dict.fromkeys([config.DATASET_NAME, "5CD-AI/Viet-Handwriting-OCR-v2"]))
+    candidates = list(dict.fromkeys([config.DATASET_NAME, "tranhuy67896262/Viet-Handwriting-OCR-v2-local"]))
     last_err = None
     for name in candidates:
         try:
@@ -77,9 +79,35 @@ def load_dataset_with_fallback(config):
     raise RuntimeError(f"Không load được dataset nào. Lỗi cuối: {last_err}")
 
 
+def _has_parquet(folder):
+    """True nếu thư mục chứa ít nhất 1 file parquet."""
+    try:
+        return any(Path(folder).glob("*.parquet"))
+    except OSError:
+        return False
+
+
+def _open_local_bundle(path):
+    """Mở dataset local: ưu tiên save_to_disk, fallback thư mục parquet.
+
+    Thư mục parquet (vd copy từ bucket) đặt file theo tên split
+    (``train-*.parquet``/``test-*.parquet``) ở root hoặc trong ``data/`` —
+    builder parquet tự suy split từ tiền tố tên file.
+    """
+    root = Path(path)
+    if (root / "dataset_dict.json").exists():
+        return load_from_disk(str(root))
+    data_dir = root if _has_parquet(root) else root / "data"
+    files = sorted(data_dir.glob("*.parquet")) if data_dir.is_dir() else []
+    if not files:
+        return load_from_disk(str(root))  # không phải dataset local: ném lỗi gốc
+    print(f"  Đọc {len(files)} file parquet từ {data_dir}")
+    return load_dataset("parquet", data_dir=str(data_dir))
+
+
 def _load_local_dataset(path, split):
     """Đọc DatasetDict đã lưu local và chọn split train."""
-    bundle = load_from_disk(path)
+    bundle = _open_local_bundle(path)
     if hasattr(bundle, "keys"):
         if split in bundle:
             return bundle[split]

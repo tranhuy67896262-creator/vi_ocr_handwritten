@@ -36,7 +36,7 @@ class Configs:
 
     # Hugging Face
     HF_TOKEN = os.getenv("HF_TOKEN", "")
-    DATASET_NAME = "5CD-AI/Viet-Handwriting-OCR-v2"
+    DATASET_NAME = "tranhuy67896262/Viet-Handwriting-OCR-v2-local"
     # CHỈ cần sửa MODEL_NAME khi muốn đổi model (3B/7B/...) — ADAPTER_DIR tự suy ra sau.
     MODEL_NAME = "Qwen/Qwen2.5-VL-3B-Instruct"
     PUSH_TO_HUB = False

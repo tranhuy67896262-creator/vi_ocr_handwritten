@@ -75,8 +75,9 @@ def main():
 
     try:
         ds = load_dataset(config.DATASET_NAME, split=config.TEST_SPLIT, token=config.HF_TOKEN or None)
-    except Exception:
-        ds = load_dataset("5CD-AI/Viet-Handwriting-OCR-v2", split=config.TEST_SPLIT, token=config.HF_TOKEN or None)
+    except Exception as exc:
+        log_and_exit(exc, stage="DATASET",
+                     extra_hint="Kiểm tra HF_TOKEN có quyền đọc dataset; tên dataset đã tồn tại trên Hub chưa.")
 
     ds = ds.select(range(min(args.num_test, len(ds))))
     image_col, text_col = detect_columns(ds)

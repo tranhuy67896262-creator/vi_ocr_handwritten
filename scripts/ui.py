@@ -497,7 +497,8 @@ def build_app():
             )
             gr.Markdown(
                 "🔗 Dataset: "
-                "[5CD-AI/Viet-Handwriting-OCR-v2](https://huggingface.co/datasets/5CD-AI/Viet-Handwriting-OCR-v2) | "
+                "[tranhuy67896262/Viet-Handwriting-OCR-v2-local]"
+                "(https://huggingface.co/datasets/tranhuy67896262/Viet-Handwriting-OCR-v2-local) | "
                 "Models: [Qwen2.5-VL-7B-Instruct](https://huggingface.co/Qwen/Qwen2.5-VL-7B-Instruct) · "
                 "[Qwen2.5-VL-3B-Instruct](https://huggingface.co/Qwen/Qwen2.5-VL-3B-Instruct)"
             )

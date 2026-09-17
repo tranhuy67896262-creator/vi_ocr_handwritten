@@ -281,7 +281,7 @@ bash run_train.sh hf_xxx --train \
 - Base model phải **cùng họ** với adapter (3B adapter + 3B base).
 - Mỗi mốc dùng 1 nhánh riêng để không đè nhau; nhánh `main` để trống làm nơi đặt bản production cuối cùng.
 
-> Dataset mặc định: source gốc gated `5CD-AI/Viet-Handwriting-OCR-v2` (phải accept điều khoản trên HF). Đổi bằng `--dataset <owner>/<repo>`.
+> Dataset mặc định: mirror private `tranhuy67896262/Viet-Handwriting-OCR-v2-local` (copy parquet gốc 5CD-AI v2: 59.247 train + 1.000 test; cần HF_TOKEN có quyền đọc). Đổi bằng `--dataset <owner>/<repo>` hoặc thư mục parquet local.
 
 ## Chạy trên A100 / H100 (Colab Pro)
 
