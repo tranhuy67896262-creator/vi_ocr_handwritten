@@ -73,34 +73,28 @@ echo "GPU: $("$PYTHON" -c "import torch; print(torch.cuda.get_device_name(0))" 2
 
 LOG="train-${RUN}.log"
 # Tu resume: neu run nay da co checkpoint local (chet giua chung) thi tiep tuc
-# dung step cu thay vi hoc lai tu dau. Dung chuoi co thay mang (tranh unbound
-# variable tren bash cu khi expand mang rong voi set -u).
-DO_RESUME=""
+# dung step cu thay vi hoc lai tu dau.
+# INIT_REV=none: moc dau chay tu trang (khong --init-adapter), vd chuoi -v2.
+# Gom co thanh chuoi (thay mang) de tuong thich bash cu voi set -u; gia tri
+# khong chua khoang trang nen word-splitting o day an toan.
+# shellcheck disable=SC2086
+EXTRA_FLAGS="--auto-progress"
 if ls -d "models/checkpoints/${RUN}"/checkpoint-* >/dev/null 2>&1; then
   echo "Thay checkpoint local -> resume dung step cu (--resume)."
-  DO_RESUME=1
+  EXTRA_FLAGS="$EXTRA_FLAGS --resume"
 fi
-if [ -n "$DO_RESUME" ]; then
-nohup "$PYTHON" scripts/train.py \
-  --dataset tranhuy67896262/Viet-Handwriting-OCR-v2-local \
-  --model tranhuy67896262/Qwen2.5-VL-7B-Instruct-private \
-  --start-samples "$START" --max-samples "$MAX" --no-4bit --batch-size 4 \
-  --gradient-accumulation-steps 4 --lr 2e-5 --epochs 1 \
-  --init-adapter "tranhuy67896262/qwen25vl-7b-vi-hwr-lora@${INIT_REV}" \
-  --push --push-every-save --save-steps "$SAVE_STEPS" \
-  --hub-repo tranhuy67896262/qwen25vl-7b-vi-hwr-lora \
-  --hub-revision "$HUB_REV" --run-name "$RUN" --resume --auto-progress \
-  > "$LOG" 2>&1 &
+if [ "$INIT_REV" != "none" ]; then
+  EXTRA_FLAGS="$EXTRA_FLAGS --init-adapter tranhuy67896262/qwen25vl-7b-vi-hwr-lora@${INIT_REV}"
 else
+  echo "INIT_REV=none -> train adapter moi tu dau (khong --init-adapter)."
+fi
 nohup "$PYTHON" scripts/train.py \
   --dataset tranhuy67896262/Viet-Handwriting-OCR-v2-local \
   --model tranhuy67896262/Qwen2.5-VL-7B-Instruct-private \
   --start-samples "$START" --max-samples "$MAX" --no-4bit --batch-size 4 \
   --gradient-accumulation-steps 4 --lr 2e-5 --epochs 1 \
-  --init-adapter "tranhuy67896262/qwen25vl-7b-vi-hwr-lora@${INIT_REV}" \
   --push --push-every-save --save-steps "$SAVE_STEPS" \
   --hub-repo tranhuy67896262/qwen25vl-7b-vi-hwr-lora \
-  --hub-revision "$HUB_REV" --run-name "$RUN" --auto-progress \
+  --hub-revision "$HUB_REV" --run-name "$RUN" $EXTRA_FLAGS \
   > "$LOG" 2>&1 &
-fi
 echo "Dang chay ${RUN} (PID $!), log: ${LOG}"
