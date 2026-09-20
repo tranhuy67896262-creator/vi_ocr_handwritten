@@ -147,8 +147,10 @@ def main():
 
 def _split_adapter_ref(init_adapter, adapter_revision):
     """Tách 'owner/repo@revision' thành (adapter_id, revision)."""
-    if not init_adapter:
+    if not init_adapter or init_adapter.strip().lower() == "none":
         return None, None
+    if adapter_revision is not None and adapter_revision.strip().lower() == "none":
+        adapter_revision = None
     if "@" in init_adapter and adapter_revision is None:
         init_adapter, _, adapter_revision = init_adapter.rpartition("@")
     return init_adapter, adapter_revision

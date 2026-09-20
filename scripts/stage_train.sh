@@ -74,7 +74,8 @@ echo "GPU: $("$PYTHON" -c "import torch; print(torch.cuda.get_device_name(0))" 2
 LOG="train-${RUN}.log"
 # Tu resume: neu run nay da co checkpoint local (chet giua chung) thi tiep tuc
 # dung step cu thay vi hoc lai tu dau.
-# INIT_REV=none: moc dau chay tu trang (khong --init-adapter), vd chuoi -v2.
+# INIT_REV=none: train.py hiểu --init-adapter none là train trắng (vd chuỗi -v2),
+# shell cứ truyền flag python bình thường.
 # Gom co thanh chuoi (thay mang) de tuong thich bash cu voi set -u; gia tri
 # khong chua khoang trang nen word-splitting o day an toan.
 # shellcheck disable=SC2086
@@ -83,18 +84,22 @@ if ls -d "models/checkpoints/${RUN}"/checkpoint-* >/dev/null 2>&1; then
   echo "Thay checkpoint local -> resume dung step cu (--resume)."
   EXTRA_FLAGS="$EXTRA_FLAGS --resume"
 fi
+INIT_ADAPTER="none"
+# Repo đích: mặc định repo cũ; train sang repo mới thì export HUB_REPO=owner/repo-moi.
+HUB_REPO="${HUB_REPO:-tranhuy67896262/qwen25vl-7b-vi-hwr-lora}"
 if [ "$INIT_REV" != "none" ]; then
-  EXTRA_FLAGS="$EXTRA_FLAGS --init-adapter tranhuy67896262/qwen25vl-7b-vi-hwr-lora@${INIT_REV}"
+  INIT_ADAPTER="${HUB_REPO}@${INIT_REV}"
 else
-  echo "INIT_REV=none -> train adapter moi tu dau (khong --init-adapter)."
+  echo "INIT_REV=none -> train adapter moi tu dau (--init-adapter none)."
 fi
 nohup "$PYTHON" scripts/train.py \
   --dataset tranhuy67896262/Viet-Handwriting-OCR-v2-local \
   --model tranhuy67896262/Qwen2.5-VL-7B-Instruct-private \
   --start-samples "$START" --max-samples "$MAX" --no-4bit --batch-size 4 \
   --gradient-accumulation-steps 4 --lr 2e-5 --epochs 1 \
+  --init-adapter "$INIT_ADAPTER" \
   --push --push-every-save --save-steps "$SAVE_STEPS" \
-  --hub-repo tranhuy67896262/qwen25vl-7b-vi-hwr-lora \
+  --hub-repo "$HUB_REPO" \
   --hub-revision "$HUB_REV" --run-name "$RUN" $EXTRA_FLAGS \
   > "$LOG" 2>&1 &
 echo "Dang chay ${RUN} (PID $!), log: ${LOG}"

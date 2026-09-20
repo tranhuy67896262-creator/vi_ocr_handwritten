@@ -75,10 +75,24 @@ echo "GPU: $("$PYTHON" -c "import torch; print(torch.cuda.get_device_name(0))" 2
 
 DATASET="tranhuy67896262/Viet-Handwriting-OCR-v2-local"
 MODEL="tranhuy67896262/Qwen2.5-VL-7B-Instruct-private"
-HUB_REPO="tranhuy67896262/qwen25vl-7b-vi-hwr-lora"
+# Repo đích: mặc định repo cũ; train sang repo mới thì export HUB_REPO=owner/repo-moi.
+HUB_REPO="${HUB_REPO:-tranhuy67896262/qwen25vl-7b-vi-hwr-lora}"
 
 S="$START"
 PREV_REV="$INIT_REV"
+# Hậu tố tên nhánh: giữ -v2 xuyên suốt nếu nối chuỗi -v2 cũ.
+# Repo mới (HUB_REPO khác default) thì tên sạch stage-5k..., không cần -v2.
+# Ghi đè tay bằng SUFFIX=-v2 / SUFFIX= khi gọi script.
+DEFAULT_REPO="tranhuy67896262/qwen25vl-7b-vi-hwr-lora"
+SUFFIX="${SUFFIX:-}"
+if [ -z "${SUFFIX:-}" ]; then
+  case "$PREV_REV" in
+    *-v2) SUFFIX="-v2" ;;
+  esac
+  if [ "$PREV_REV" = "none" ] && [ "$S" -eq 0 ] && [ "$HUB_REPO" = "$DEFAULT_REPO" ]; then
+    SUFFIX="-v2"
+  fi
+fi
 while [ "$S" -lt "$END" ]; do
   E=$((S + STEP))
   if [ "$E" -gt "$END" ]; then
@@ -88,8 +102,8 @@ while [ "$S" -lt "$END" ]; do
   # (dataset.py: end = start + max). Nen truyen count = E - S.
   COUNT=$((E - S))
   K=$((E / 1000))
-  HUB_REV="stage-${K}k"
-  RUN="run-${K}k"
+  HUB_REV="stage-${K}k${SUFFIX}"
+  RUN="run-${K}k${SUFFIX}"
   echo "===== Moc ${S} -> ${E} (init ${PREV_REV} -> ${HUB_REV}) ====="
 
   # Tu resume neu moc nay da co checkpoint local (chet giua chung).
@@ -99,12 +113,20 @@ while [ "$S" -lt "$END" ]; do
     echo "Thay checkpoint local -> resume dung step cu (--resume)."
     DO_RESUME=1
   fi
+  # Moc đầu chuỗi mới (PREV_REV=none): train.py hiểu --init-adapter none
+  # là train trắng, shell cứ truyền flag python bình thường, khỏi hack chuỗi rỗng.
+  INIT_ADAPTER="none"
+  if [ "$PREV_REV" != "none" ]; then
+    INIT_ADAPTER="${HUB_REPO}@${PREV_REV}"
+  else
+    echo "Moc dau chuoi moi -> train adapter moi tu dau (--init-adapter none)."
+  fi
   if [ -n "$DO_RESUME" ]; then
     "$PYTHON" scripts/train.py \
       --dataset "$DATASET" --model "$MODEL" \
       --start-samples "$S" --max-samples "$COUNT" --no-4bit --batch-size 4 \
       --gradient-accumulation-steps 4 --lr 2e-5 --epochs 1 \
-      --init-adapter "${HUB_REPO}@${PREV_REV}" \
+      --init-adapter "$INIT_ADAPTER" \
       --push --push-every-save --save-steps "$SAVE_STEPS" \
       --hub-repo "$HUB_REPO" --hub-revision "$HUB_REV" --run-name "$RUN" --resume --auto-progress
   else
@@ -112,7 +134,7 @@ while [ "$S" -lt "$END" ]; do
       --dataset "$DATASET" --model "$MODEL" \
       --start-samples "$S" --max-samples "$COUNT" --no-4bit --batch-size 4 \
       --gradient-accumulation-steps 4 --lr 2e-5 --epochs 1 \
-      --init-adapter "${HUB_REPO}@${PREV_REV}" \
+      --init-adapter "$INIT_ADAPTER" \
       --push --push-every-save --save-steps "$SAVE_STEPS" \
       --hub-repo "$HUB_REPO" --hub-revision "$HUB_REV" --run-name "$RUN" --auto-progress
   fi
