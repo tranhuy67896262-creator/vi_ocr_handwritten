@@ -11,15 +11,25 @@
 # VD:
 #   ./scripts/stage_train.sh 5000 10000 stage-5k stage-15k run-15k
 #   ./scripts/stage_train.sh 5000 10000 stage-5k stage-15k run-15k 50  # push moi 50 step
+# GPU 80GB + batch 8: BATCH_SIZE=8 GRAD_ACCUM=4 ./scripts/stage_train.sh ...
+# Repo moi: HUB_REPO=owner/repo-moi ./scripts/stage_train.sh ...
 # Xem tien do: tail -f train-run-15k.log
 set -euo pipefail
 
 START=${1:?can start-samples = offset bo qua (vd 5000)}
 MAX=${2:?can max-samples = SO LUONG mau (vd 10000 cho lat 5k->15k)}
-INIT_REV=${3:?can init revision (vd stage-5k)}
+INIT_REV=${3:?can init revision (vd stage-5k, hoac none de train trang)}
 HUB_REV=${4:?can hub-revision (vd stage-15k)}
 RUN=${5:?can run-name (vd run-15k)}
 SAVE_STEPS=${6:-100}
+# Ghi de batch/LoRA qua env (mac dinh cau hinh chuan 7B bf16). GPU 80GB:
+# BATCH_SIZE=8 GRAD_ACCUM=4 (eff 32, ~156 step/5k). LORA_* chi tac dung khi
+# INIT_REV=none (noi tu adapter cu thi r/alpha lay theo adapter cu).
+BATCH_SIZE="${BATCH_SIZE:-4}"
+GRAD_ACCUM="${GRAD_ACCUM:-4}"
+LR="${LR:-2e-5}"
+LORA_R="${LORA_R:-}"
+LORA_ALPHA="${LORA_ALPHA:-}"
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT"
@@ -87,19 +97,30 @@ fi
 INIT_ADAPTER="none"
 # Repo đích: mặc định repo cũ; train sang repo mới thì export HUB_REPO=owner/repo-moi.
 HUB_REPO="${HUB_REPO:-tranhuy67896262/qwen25vl-7b-vi-hwr-lora}"
+# Repo nguồn adapter: mặc định = HUB_REPO; nối weight repo cũ sang repo mới thì
+# export INIT_REPO=owner/repo-cu (vd INIT_REPO=.../qwen25vl-7b-vi-hwr-lora).
+INIT_REPO="${INIT_REPO:-$HUB_REPO}"
 if [ "$INIT_REV" != "none" ]; then
-  INIT_ADAPTER="${HUB_REPO}@${INIT_REV}"
+  INIT_ADAPTER="${INIT_REPO}@${INIT_REV}"
 else
   echo "INIT_REV=none -> train adapter moi tu dau (--init-adapter none)."
+fi
+# LORA_* chi truyen khi train trang (co init thi train.py lay theo adapter cu).
+LORA_FLAGS=""
+if [ -n "$LORA_R" ]; then
+  LORA_FLAGS="$LORA_FLAGS --lora-r $LORA_R"
+fi
+if [ -n "$LORA_ALPHA" ]; then
+  LORA_FLAGS="$LORA_FLAGS --lora-alpha $LORA_ALPHA"
 fi
 nohup "$PYTHON" scripts/train.py \
   --dataset tranhuy67896262/Viet-Handwriting-OCR-v2-local \
   --model tranhuy67896262/Qwen2.5-VL-7B-Instruct-private \
-  --start-samples "$START" --max-samples "$MAX" --no-4bit --batch-size 4 \
-  --gradient-accumulation-steps 4 --lr 2e-5 --epochs 1 \
+  --start-samples "$START" --max-samples "$MAX" --no-4bit --batch-size "$BATCH_SIZE" \
+  --gradient-accumulation-steps "$GRAD_ACCUM" --lr "$LR" --epochs 1 \
   --init-adapter "$INIT_ADAPTER" \
   --push --push-every-save --save-steps "$SAVE_STEPS" \
   --hub-repo "$HUB_REPO" \
-  --hub-revision "$HUB_REV" --run-name "$RUN" $EXTRA_FLAGS \
+  --hub-revision "$HUB_REV" --run-name "$RUN" $EXTRA_FLAGS $LORA_FLAGS \
   > "$LOG" 2>&1 &
 echo "Dang chay ${RUN} (PID $!), log: ${LOG}"

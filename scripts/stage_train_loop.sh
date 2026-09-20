@@ -10,13 +10,19 @@
 #   ./scripts/stage_train_loop.sh 15000 59247 stage-15k
 # VD: buoc 5000, push moi 50 step:
 #   ./scripts/stage_train_loop.sh 15000 59247 stage-15k 5000 50
+# Chuoi moi trang tu 0 sang repo moi, GPU 80GB:
+#   HUB_REPO=owner/repo-moi BATCH_SIZE=8 GRAD_ACCUM=4 ./scripts/stage_train_loop.sh 0 59247 none 5000 50
 set -euo pipefail
 
 START=${1:?can start (vd 15000)}
 END=${2:?can end (vd 59247)}
-INIT_REV=${3:?can init revision (vd stage-15k)}
+INIT_REV=${3:?can init revision (vd stage-15k, hoac none de train trang tu 0)}
 STEP=${4:-5000}
 SAVE_STEPS=${5:-100}
+# Ghi de batch qua env (mac dinh cau hinh chuan). GPU 80GB: BATCH_SIZE=8 GRAD_ACCUM=4.
+BATCH_SIZE="${BATCH_SIZE:-4}"
+GRAD_ACCUM="${GRAD_ACCUM:-4}"
+LR="${LR:-2e-5}"
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT"
@@ -115,25 +121,26 @@ while [ "$S" -lt "$END" ]; do
   fi
   # Moc đầu chuỗi mới (PREV_REV=none): train.py hiểu --init-adapter none
   # là train trắng, shell cứ truyền flag python bình thường, khỏi hack chuỗi rỗng.
+  # INIT_REPO (mặc định = HUB_REPO): repo nguồn khi nối weight repo cũ sang repo mới.
   INIT_ADAPTER="none"
   if [ "$PREV_REV" != "none" ]; then
-    INIT_ADAPTER="${HUB_REPO}@${PREV_REV}"
+    INIT_ADAPTER="${INIT_REPO:-$HUB_REPO}@${PREV_REV}"
   else
     echo "Moc dau chuoi moi -> train adapter moi tu dau (--init-adapter none)."
   fi
   if [ -n "$DO_RESUME" ]; then
     "$PYTHON" scripts/train.py \
       --dataset "$DATASET" --model "$MODEL" \
-      --start-samples "$S" --max-samples "$COUNT" --no-4bit --batch-size 4 \
-      --gradient-accumulation-steps 4 --lr 2e-5 --epochs 1 \
+      --start-samples "$S" --max-samples "$COUNT" --no-4bit --batch-size "$BATCH_SIZE" \
+      --gradient-accumulation-steps "$GRAD_ACCUM" --lr "$LR" --epochs 1 \
       --init-adapter "$INIT_ADAPTER" \
       --push --push-every-save --save-steps "$SAVE_STEPS" \
       --hub-repo "$HUB_REPO" --hub-revision "$HUB_REV" --run-name "$RUN" --resume --auto-progress
   else
     "$PYTHON" scripts/train.py \
       --dataset "$DATASET" --model "$MODEL" \
-      --start-samples "$S" --max-samples "$COUNT" --no-4bit --batch-size 4 \
-      --gradient-accumulation-steps 4 --lr 2e-5 --epochs 1 \
+      --start-samples "$S" --max-samples "$COUNT" --no-4bit --batch-size "$BATCH_SIZE" \
+      --gradient-accumulation-steps "$GRAD_ACCUM" --lr "$LR" --epochs 1 \
       --init-adapter "$INIT_ADAPTER" \
       --push --push-every-save --save-steps "$SAVE_STEPS" \
       --hub-repo "$HUB_REPO" --hub-revision "$HUB_REV" --run-name "$RUN" --auto-progress
