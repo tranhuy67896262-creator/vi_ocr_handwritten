@@ -56,9 +56,19 @@ case "$EVAL_NUM" in
 esac
 
 # Cache model/dataset vào thư mục relative của project (vd .hf_cache) — dễ mang theo.
-# Muốn cache chỗ khác/Drive: export HF_HOME=<path> trước khi chạy.
+# Colab: VM xóa mỗi phiên — mount Drive trước (drive.mount('/content/drive')) thì
+# script tự giữ cache uv + HF trên Drive, phiên sau khỏi tải lại (~1-2p thay vì ~15p).
+# Muốn chỗ khác: export HF_HOME / UV_CACHE_DIR trước khi chạy.
+if [ -z "${HF_HOME:-}" ] && [ -d "/content/drive/MyDrive" ]; then
+    HF_HOME="/content/drive/MyDrive/vi_ocr_handwritten/.hf_cache"
+fi
 export HF_HOME="${HF_HOME:-$PWD/.hf_cache}"
 echo "HF cache: $HF_HOME"
+if [ -z "${UV_CACHE_DIR:-}" ] && [ -d "/content/drive/MyDrive" ]; then
+    UV_CACHE_DIR="/content/drive/MyDrive/vi_ocr_handwritten/.cache/uv"
+fi
+export UV_CACHE_DIR="${UV_CACHE_DIR:-${XDG_CACHE_HOME:-$HOME/.cache}/uv}"
+echo "uv cache: $UV_CACHE_DIR"
 
 # Cài uv nếu chưa có (thay pip/venv — nhanh hơn nhiều)
 if ! command -v uv >/dev/null 2>&1; then
@@ -118,11 +128,52 @@ if ! "$PYTHON" -c "import torch, torchvision; assert torch.cuda.is_available()" 
     uv pip install --python "$PYTHON" torch torchvision --index-url https://download.pytorch.org/whl/cu128
 fi
 
+# Thu wheel flash-attn build san tren GitHub release (mjun0812) theo dung combo
+# (python, torch, cuda) dang chay — Colab pull ve cai ~1-2 phut thay vi build 20p.
+# Tra 0 neu cai + import duoc; tra 1 de caller fallback build source.
+install_flash_attn_github() {
+    _FAPY="$1" _FAPYTAG="" _FATORCH="" _FACUDA="" _FAURL=""
+    [ "$(uname -m)" = "x86_64" ] || return 1
+    _FAPYTAG="cp$($_FAPY -c "import sys; print(f'{sys.version_info.major}{sys.version_info.minor}')" 2>/dev/null)" || return 1
+    _FATORCH="$($_FAPY -c "import torch; print('.'.join(torch.__version__.split('.')[:2]))" 2>/dev/null)" || return 1
+    _FACUDA="cu$($_FAPY -c "import torch; print((torch.version.cuda or '').replace('.', ''))" 2>/dev/null)" || return 1
+    # Bang wheel da verify (Linux x86_64, torch cu128):
+    case "${_FAPYTAG}-torch${_FATORCH}-${_FACUDA}" in
+        cp313-torch2.8-cu128)
+            _FAURL="https://github.com/mjun0812/flash-attention-prebuild-wheels/releases/download/v0.4.12/flash_attn-2.8.3%2Bcu128torch2.8-cp313-cp313-linux_x86_64.whl" ;;
+        cp313-torch2.9-cu128)
+            _FAURL="https://github.com/mjun0812/flash-attention-prebuild-wheels/releases/download/v0.4.15/flash_attn-2.8.3%2Bcu128torch2.9-cp313-cp313-linux_x86_64.whl" ;;
+        *) return 1 ;;
+    esac
+    echo "Cai flash-attn tu GitHub release (${_FAPYTAG}/torch${_FATORCH}/${_FACUDA})..."
+    if uv pip install --python "$_FAPY" "$_FAURL" 2>/dev/null \
+            && "$_FAPY" -c "import flash_attn" 2>/dev/null; then
+        return 0
+    fi
+    return 1
+}
+
 # flash-attn: tăng tốc attention trên GPU lớn (A100/H100). Chỉ có wheel Linux
 # nên cài ở đây (sau torch); thiếu thì code tự fallback sdpa nên cài best-effort.
+# Thu tu: wheel chi dinh (FLASH_ATTN_WHEEL_URL) -> wheel GitHub tu dong -> build source.
 if ! "$PYTHON" -c "import flash_attn" 2>/dev/null; then
     echo "Dang cai flash-attn (tang toc A100/H100, bo qua neu loi)..."
-    uv pip install --python "$PYTHON" flash-attn 2>/dev/null || echo "[WARN] Bo qua flash-attn."
+    _FLASH_OK=""
+    if [ -n "${FLASH_ATTN_WHEEL_URL:-}" ]; then
+        echo "Cai flash-attn tu wheel chi dinh..."
+        if uv pip install --python "$PYTHON" "$FLASH_ATTN_WHEEL_URL" 2>/dev/null \
+                && "$PYTHON" -c "import flash_attn" 2>/dev/null; then
+            _FLASH_OK=1
+        fi
+    fi
+    if [ -z "$_FLASH_OK" ] && install_flash_attn_github "$PYTHON"; then
+        _FLASH_OK=1
+    fi
+    if [ -z "$_FLASH_OK" ]; then
+        echo "[WARN] Khong co wheel khop -> build source (10-20p)..."
+        MAX_JOBS=4 uv pip install --python "$PYTHON" flash-attn --no-build-isolation 2>/dev/null \
+            || echo "[WARN] Bo qua flash-attn."
+    fi
 fi
 
 # Cài dependencies còn thiếu (Colab đã có sẵn torch CUDA + torchvision)

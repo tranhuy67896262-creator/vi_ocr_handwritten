@@ -81,7 +81,7 @@ def render_pdf_pages(pdf_path, dpi=200):
             import fitz
         except ImportError:
             raise ImportError(
-                "Thiếu pymupdf — chạy `pip install pymupdf` để OCR file PDF."
+                "Thiếu pymupdf — chạy `uv pip install pymupdf` để OCR file PDF."
             ) from None
     pages = []
     doc = fitz.open(pdf_path)
@@ -128,7 +128,7 @@ def extract_docx_images(docx_path):
         from docx.text.paragraph import Paragraph
     except ImportError:
         raise ImportError(
-            "Thiếu python-docx — chạy `pip install python-docx` để OCR file Word."
+            "Thiếu python-docx — chạy `uv pip install python-docx` để OCR file Word."
         ) from None
 
     doc = Document(docx_path)

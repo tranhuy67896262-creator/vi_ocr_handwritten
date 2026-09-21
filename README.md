@@ -63,7 +63,7 @@ import_models_to_ollama.sh # import các GGUF đã export vào Ollama (tự dò 
 ## Cài đặt
 
 ```bash
-pip install -r requirements.txt
+uv pip install -r requirements.txt
 ```
 
 > **Windows:** train thật nên chạy trong **WSL2** (hoặc GPU cloud như Colab) vì `bitsandbytes` + CUDA trên Windows hay lỗi vặt. Nhớ set `HF_TOKEN` trong `.env.dev`. QLoRA 4-bit: 3B phù hợp GPU 15GB; 7B nên dùng A100/H100. Nếu `bitsandbytes` lỗi, code fallback sang full-precision và có thể OOM.
@@ -86,7 +86,12 @@ Muốn train ngay từ lệnh (không qua UI): thêm cờ `--train`:
 
 **Trên Colab với 3B và GPU 15GB:**
 1. Upload toàn bộ project vào Colab (kéo-thả vào `/content/`).
-2. Mở terminal (hoặc 1 cell) — truyền token luôn, script tự tạo `.env.dev`:
+2. Phiên đầu chạy cell này để giữ cache cho các phiên sau (mount Drive 1 lần):
+```python
+from google.colab import drive; drive.mount('/content/drive')
+```
+Script tự phát hiện Drive và giữ cache uv + model/dataset trên đó — phiên sau khỏi tải lại (~1-2p thay vì ~15p). Không mount thì chạy local như cũ.
+3. Mở terminal (hoặc 1 cell) — truyền token luôn, script tự tạo `.env.dev`:
 ```bash
 !chmod +x run_train.sh && ./run_train.sh hf_xxxxx --train --model tranhuy67896262/Qwen2.5-VL-3B-Instruct-private --batch-size 1 --max-samples 100
 ```
@@ -356,7 +361,8 @@ bash run_train.sh hf_xxx --train \
 ## Chạy trên A100 / H100 (Colab Pro)
 
 ```bash
-!pip install -q flash-attn   # 1 lần mỗi runtime — code tự dùng khi có, fallback sdpa khi không
+# Colab: script tu thu wheel GitHub build san theo combo may (~1-2p), hong thi build
+# source (10-20p) hoac bo qua (fallback sdpa, hoc y het). Tay thi: FLASH_ATTN_WHEEL_URL=<url> ...
 ```
 
 ```bash
@@ -383,4 +389,4 @@ Giữ nguyên effective batch khi đổi per-device batch (vd `8x4` ↔ `16x2`) 
 - Ảnh train/inference giữ nguyên gốc (dataset là ảnh crop dòng) — processor tự resize về lưới 28x28 và giới hạn theo `MIN_PIXELS`/`MAX_PIXELS` trong `configs/configs.py`.
 - `models/`, `data/`, `.hf_cache/`, `.env.dev` không commit (git-ignored). Cache HF nằm trong project nên chạy lại không tải lại.
 - UI offline (không tạo link public): `GRADIO_SHARE=0`.
-- Cần torch CUDA thủ công: `pip install torch torchvision --index-url https://download.pytorch.org/whl/cu128` (wrapper thường tự lo).
+- Cần torch CUDA thủ công: `uv pip install torch torchvision --index-url https://download.pytorch.org/whl/cu128` (wrapper thường tự lo).
