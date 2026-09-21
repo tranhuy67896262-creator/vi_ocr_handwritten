@@ -127,6 +127,7 @@ install_flash_attn_github() {
 
 # Cài uv + torch-CUDA + flash-attn (best-effort) + requirements nếu thiếu.
 # Đặt biến toàn cục PYTHON. Gọi sau khi caller đã cd về ROOT.
+# FRESH_VENV=1: xóa .venv cũ, tạo lại bằng uv (đảm bảo venv do uv quản lý).
 setup_gpu_env() {
     export UV_LINK_MODE="${UV_LINK_MODE:-copy}"
     # Colab: VM xóa mỗi phiên — mount Drive trước thì giữ cache uv + HF trên
@@ -145,10 +146,16 @@ setup_gpu_env() {
         python3 -m pip install -q uv
     fi
 
+    if [[ "${FRESH_VENV:-0}" == "1" && -d ".venv" ]]; then
+        echo "FRESH_VENV=1 -> xoa .venv cu, tao lai bang uv."
+        rm -rf .venv
+    fi
     if [ -x ".venv/bin/python" ]; then
         PYTHON=".venv/bin/python"
+        echo "Dung .venv co san."
     elif [ -x ".venv/Scripts/python.exe" ]; then
         PYTHON=".venv/Scripts/python.exe"
+        echo "Dung .venv co san."
     else
         echo "Tao .venv bang uv..."
         uv venv .venv
