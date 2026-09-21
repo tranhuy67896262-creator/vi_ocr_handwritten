@@ -36,8 +36,14 @@ def sync_adapter(model_name, current):
     return cur
 
 
-def _run(cmd, log="", cwd=None):
-    """Chạy 1 script con, stream output realtime vào log (cwd mặc định project)."""
+def _run(cmd, log="", cwd=None, env=None):
+    """Chạy 1 script con, stream output realtime vào log (cwd mặc định project).
+
+    ``env``: dict biến môi trường cộng thêm (vd USE_4BIT/BATCH_SIZE cho stage_train.sh).
+    """
+    merged_env = dict(os.environ)
+    if env:
+        merged_env.update({k: str(v) for k, v in env.items() if v is not None})
     with subprocess.Popen(
         cmd,
         stdout=subprocess.PIPE,
@@ -47,6 +53,7 @@ def _run(cmd, log="", cwd=None):
         errors="replace",
         bufsize=1,
         cwd=str(cwd or PROJECT_ROOT),
+        env=merged_env,
     ) as proc:
         for line in proc.stdout:
             log += line
@@ -55,23 +62,142 @@ def _run(cmd, log="", cwd=None):
         yield log + f"\n[Thoát với mã: {proc.returncode}]"
 
 
-# ---------------- Train ----------------
+STAGE_MODELS = ["qwenvl-3b", "qwenvl-7b"]
 
-def train_ui(dataset, model, data_size, resume):
-    """Chạy scripts/train.py với tham số từ UI, log realtime; xong thì xóa cache OCR."""
+# Batch preset theo model: (USE_4BIT, BATCH_SIZE, GRAD_ACCUM); None = để script tự chọn.
+BATCH_PRESETS = {
+    "auto": {},
+    "fast": {"qwenvl-3b": ("0", "16", "2"), "qwenvl-7b": ("0", "8", "4")},
+    "saver": {"qwenvl-3b": ("1", "2", "8"), "qwenvl-7b": ("0", "2", "8")},
+}
+
+
+def _stage_model_full(short):
+    """qwenvl-3b -> tên model HF đầy đủ (để suy repo mặc định + kiểm tra cache)."""
+    s = (short or "").strip().lower()
+    if "3b" in s:
+        return MODEL_CHOICES[0]
+    if "7b" in s:
+        return MODEL_CHOICES[1]
+    return s or MODEL_CHOICES[0]
+
+
+def _hub_user():
+    """User của token trong .env.dev (None nếu chưa có/không đọc được)."""
+    config = Configs()
+    if not config.HF_TOKEN:
+        return None
+    return _token_username(config.HF_TOKEN)
+
+
+def _resolve_hub_repo(repo):
+    """Repo trần (không owner) -> ghép user của token; trả (repo_full, cảnh báo)."""
+    repo = (repo or "").strip()
+    if not repo:
+        return "", "Chưa nhập repo (dạng `owner/repo`)."
+    if "/" in repo:
+        return repo, ""
+    user = _hub_user()
+    if not user:
+        return repo, "Repo thiếu owner mà chưa có HF_TOKEN — sang tab Settings lưu token trước."
+    return f"{user}/{repo}", ""
+
+
+def _list_stage_branches(repo):
+    """Nhánh stage-* của repo Hub, sắp xếp theo K tăng dần (cần HF_TOKEN)."""
+    config = Configs()
+    if not config.HF_TOKEN:
+        return None, "Chưa có HF_TOKEN — sang tab Settings lưu token trước."
+    try:
+        from huggingface_hub import HfApi
+        refs = HfApi(token=config.HF_TOKEN).list_repo_refs(repo_id=repo)
+    except Exception as exc:
+        return None, f"Không đọc được repo `{repo}`: {exc}"
+    found = []
+    for br in refs.branches:
+        name = br.name
+        if not name.startswith("stage-"):
+            continue
+        core = name[len("stage-"):]
+        knum = core.split("k")[0] if "k" in core else ""
+        if knum.isdigit():
+            found.append((int(knum), name))
+    found.sort()
+    return found, ""
+
+
+def stage_progress_ui(repo, model):
+    """Nút kiểm tra: repo đã train tới mốc nào (không train gì cả)."""
+    repo_full, warn = _resolve_hub_repo(repo)
+    if not repo_full or "/" not in repo_full:
+        return warn
+    found, err = _list_stage_branches(repo_full)
+    if found is None:
+        return err
+    lines = [f"Repo `{repo_full}` (model `{model or 'qwenvl-3b'}`):"]
+    if not found:
+        lines.append("— Chưa có mốc stage nào → lần chạy tới sẽ **train trắng từ mẫu 0**.")
+    else:
+        lines.append("— Các mốc đã có: " + ", ".join(f"`{n}`" for _, n in found))
+        top_k, top_name = found[-1]
+        lines.append(f"— Lần chạy tới sẽ **train tiếp từ mẫu {top_k * 1000}** "
+                     f"với adapter `{repo_full}@{top_name}`.")
+    if warn:
+        lines.append(f"⚠️ {warn}")
+    return "\n".join(lines)
+
+
+def _stage_env(model, preset):
+    """Env batch/precision cho stage_train.sh theo preset đã chọn."""
+    label = (preset or "")
+    if label.startswith("Nhanh"):
+        key = "fast"
+    elif label.startswith("Ti"):
+        key = "saver"
+    else:
+        key = "auto"
+    if key == "auto":
+        return {}
+    short = (model or "").strip().lower()
+    tag = "qwenvl-7b" if "7b" in short else "qwenvl-3b"
+    use_4bit, batch, accum = BATCH_PRESETS[key][tag]
+    return {"USE_4BIT": use_4bit, "BATCH_SIZE": batch, "GRAD_ACCUM": accum}
+
+
+def stage_dryrun_ui(repo, model, count, save_steps, preset):
+    """Chạy stage_train.sh với DRY_RUN=1: xem kế hoạch start/init/rev, không train."""
+    repo_full, warn = _resolve_hub_repo(repo)
+    if not repo_full or "/" not in repo_full:
+        yield warn
+        return
     _free_gpu()
-    cmd = [sys.executable, str(SCRIPT / "train.py")]
-    if dataset:
-        cmd += ["--dataset", dataset]
-    if model:
-        cmd += ["--model", model]
-    if data_size and int(data_size) > 0:
-        cmd += ["--max-samples", str(int(data_size))]
-    if resume:
-        cmd += ["--resume"]
-    yield from _run(cmd, "> " + " ".join(cmd) + "\n")
-    # Train xong -> xoa cache model OCR để lần OCR sau load đúng adapter mới nhất.
+    cmd = ["bash", str(SCRIPT / "stage_train.sh"),
+           (model or "qwenvl-3b").strip(), repo_full,
+           (count or "5000").strip(), str(int(save_steps or 50))]
+    env = {"DRY_RUN": "1"}
+    env.update(_stage_env(model, preset))
+    if warn:
+        yield warn + "\n"
+    yield from _run(cmd, "> " + " ".join(cmd) + "\n", env=env)
+
+
+def stage_train_ui(repo, model, count, save_steps, preset):
+    """Chạy stage_train.sh thật: 1 lát, nền nohup, log vào train-<run>.log."""
+    repo_full, warn = _resolve_hub_repo(repo)
+    if not repo_full or "/" not in repo_full:
+        yield warn
+        return
+    _free_gpu()
+    cmd = ["bash", str(SCRIPT / "stage_train.sh"),
+           (model or "qwenvl-3b").strip(), repo_full,
+           (count or "5000").strip(), str(int(save_steps or 50))]
+    if warn:
+        yield warn + "\n"
+    yield from _run(cmd, "> " + " ".join(cmd) + "\n", env=_stage_env(model, preset))
+    # Train chạy nền xong (hoặc đứt) -> xóa cache để OCR sau load adapter mới nhất.
     _OCR_CACHE.clear()
+    yield ("Xem tiến độ bằng `tail -n 5 train-<run>.log` (không `tail -f`). "
+           "Đứt giữa chừng: bấm lại nút này (tự resume checkpoint + nối nhánh Hub).")
 
 
 # ---------------- OCR ----------------
@@ -143,27 +269,31 @@ def ocr_file_ui(file_path, adapter, model):
 
 # ---------------- Eval ----------------
 
-def eval_ui(num_test, adapter, model):
-    """Chạy eval_ocr.py, log realtime."""
+def eval_ui(num_test, adapter, model, revision):
+    """Chạy eval_ocr.py, log realtime (revision: eval đúng mốc staged, vd stage-10k)."""
     _free_gpu()
     cmd = [sys.executable, str(SCRIPT / "eval_ocr.py"), "--num-test", str(int(num_test))]
     if adapter and adapter.strip():
         cmd += ["--adapter", adapter.strip()]
     if model and model.strip():
         cmd += ["--model", model.strip()]
+    if revision and revision.strip():
+        cmd += ["--adapter-revision", revision.strip()]
     yield from _run(cmd)
 
 
 # ---------------- Export ----------------
 
-def export_ui(adapter, model):
-    """Chạy export_merged.py, log realtime."""
+def export_ui(adapter, model, revision):
+    """Chạy export_merged.py, log realtime (revision: merge đúng mốc staged)."""
     _free_gpu()
     cmd = [sys.executable, str(SCRIPT / "export_merged.py")]
     if adapter and adapter.strip():
         cmd += ["--adapter", adapter.strip()]
     if model and model.strip():
         cmd += ["--model", model.strip()]
+    if revision and revision.strip():
+        cmd += ["--adapter-revision", revision.strip()]
     yield from _run(cmd)
 
 
@@ -194,7 +324,7 @@ def _merge_is_fresh(merge_dir, adapter):
     return _newest(m) >= _newest(src)
 
 
-def export_gguf_ui(adapter, model):
+def export_gguf_ui(adapter, model, revision):
     """Nút Download .gguf: bỏ qua merge nếu thư mục merged còn mới,
     rồi convert + quantize. Chỉ Linux/Colab.
 
@@ -209,6 +339,7 @@ def export_gguf_ui(adapter, model):
     config = Configs()
     adapter = (adapter or "").strip() or str(config.ADAPTER_DIR)
     model = (model or "").strip() or config.MODEL_NAME
+    revision = (revision or "").strip()
     merge_dir = str(PROJECT_ROOT / "models" / f"{Path(adapter).name}-merged")
     log = ""
     if _merge_is_fresh(merge_dir, adapter):
@@ -217,6 +348,8 @@ def export_gguf_ui(adapter, model):
     else:
         cmd1 = [sys.executable, str(SCRIPT / "export_merged.py"),
                 "--adapter", adapter, "--model", model, "--output", merge_dir]
+        if revision:
+            cmd1 += ["--adapter-revision", revision]
         for chunk in _run(cmd1, "> " + " ".join(cmd1) + "\n"):
             log = chunk
             yield log, _hidden, "⏳ Đang merge adapter (vài phút)..."
@@ -471,43 +604,57 @@ def build_app():
 
         with gr.Tab("Fine-tune"):
             gr.Markdown(
-                "Dataset nguồn có **50k+ ảnh**. Chọn **Full** để train toàn bộ (lâu nhất), "
-                "**35k / 10k** để train nhanh hơn."
+                "Mỗi lần chạy train tiếp **1 lát data mới** (`count` mẫu) từ đúng mốc repo "
+                "đang có — script tự dò nhánh `stage-*` cao nhất trên Hub, kéo adapter về "
+                "train tiếp, push nhánh mới. Không cần nhớ start/init."
             )
             with gr.Row():
-                dataset = gr.Textbox(value=cfg.DATASET_NAME, label="Dataset")
-                model = gr.Dropdown(
-                    choices=MODEL_CHOICES,
-                    value=cfg.MODEL_NAME, label="Model",
+                stage_repo = gr.Textbox(
+                    label="Repo adapter (owner/repo)",
+                    placeholder="username/qwen25vl-3b-vi-hwr-lora (thiếu owner → lấy user của token)",
+                )
+                stage_model = gr.Dropdown(
+                    choices=STAGE_MODELS,
+                    value="qwenvl-3b", label="Model",
                     allow_custom_value=True,
                 )
-            data_size = gr.Radio(
-                choices=[
-                    ("Full (50k+ ảnh)", 0),
-                    ("35k ảnh", 35000),
-                    ("10k ảnh", 10000),
-                    ("100 ảnh", 100),
-                    ("10 ảnh (test pipeline)", 10),
-                ],
-                value=0, label="Cỡ data train",
-            )
-            resume_ckpt = gr.Checkbox(
-                value=False,
-                label="Tiếp tục từ checkpoint (tick khi chạy lại sau đứt giữa chừng)",
-            )
-            gr.Markdown(
-                "🔗 Dataset: "
-                "[tranhuy67896262/Viet-Handwriting-OCR-v2-local]"
-                "(https://huggingface.co/datasets/tranhuy67896262/Viet-Handwriting-OCR-v2-local) | "
-                "Models: [Qwen2.5-VL-7B-Instruct]"
-                "(https://huggingface.co/tranhuy67896262/Qwen2.5-VL-7B-Instruct-private) · "
-                "[Qwen2.5-VL-3B-Instruct](https://huggingface.co/tranhuy67896262/Qwen2.5-VL-3B-Instruct-private)"
-            )
-            train_btn = gr.Button("▶ Fine-tune", variant="primary")
+            with gr.Row():
+                stage_count = gr.Textbox(
+                    value="5000", label="Số mẫu mỗi lát (count)",
+                    placeholder="5000 hoặc 10k",
+                )
+                stage_save = gr.Number(
+                    value=50, label="Push snapshot mỗi N step (save_steps)",
+                    precision=0,
+                )
+                stage_preset = gr.Radio(
+                    choices=[
+                        "Auto theo model (3B: batch 8 QLoRA · 7B: batch 4 bf16)",
+                        "Nhanh nhất (A100 80GB — 3B bf16 batch 16 · 7B bf16 batch 8)",
+                        "Tiết kiệm VRAM (batch 2)",
+                    ],
+                    value="Auto theo model (3B: batch 8 QLoRA · 7B: batch 4 bf16)",
+                    label="Chế độ batch",
+                )
+            with gr.Row():
+                progress_btn = gr.Button("🔍 Kiểm tra repo tới đâu", variant="secondary")
+                dry_btn = gr.Button("📋 Xem kế hoạch (không train)", variant="secondary")
+                stage_btn = gr.Button("▶ Fine-tune tiếp 1 lát", variant="primary")
+            stage_progress = gr.Markdown()
             train_log = gr.Textbox(label="Log", lines=20, max_lines=30, autoscroll=True, elem_classes=["log-scroll"])
-            train_btn.click(
-                train_ui,
-                inputs=[dataset, model, data_size, resume_ckpt],
+            progress_btn.click(
+                stage_progress_ui,
+                inputs=[stage_repo, stage_model],
+                outputs=stage_progress,
+            )
+            dry_btn.click(
+                stage_dryrun_ui,
+                inputs=[stage_repo, stage_model, stage_count, stage_save, stage_preset],
+                outputs=train_log,
+            )
+            stage_btn.click(
+                stage_train_ui,
+                inputs=[stage_repo, stage_model, stage_count, stage_save, stage_preset],
                 outputs=train_log,
             )
 
@@ -552,19 +699,23 @@ def build_app():
                 eval_adapter = gr.Textbox(value=str(cfg.ADAPTER_DIR), label="Adapter")
                 eval_model = gr.Dropdown(choices=MODEL_CHOICES, value=cfg.MODEL_NAME,
                                          label="Base model", allow_custom_value=True)
+            eval_rev = gr.Textbox(label="Revision adapter (tùy chọn)",
+                                  placeholder="stage-10k — để trống = nhánh main/mặc định")
             eval_model.change(sync_adapter, inputs=[eval_model, eval_adapter], outputs=eval_adapter)
             eval_btn = gr.Button("📊 Eval", variant="primary")
             eval_log = gr.Textbox(label="Log", lines=20, max_lines=30, autoscroll=True, elem_classes=["log-scroll"])
-            eval_btn.click(eval_ui, inputs=[num_test, eval_adapter, eval_model], outputs=eval_log)
+            eval_btn.click(eval_ui, inputs=[num_test, eval_adapter, eval_model, eval_rev], outputs=eval_log)
 
         with gr.Tab("Export"):
             export_adapter = gr.Textbox(value=str(cfg.ADAPTER_DIR), label="Adapter")
             export_model = gr.Dropdown(choices=MODEL_CHOICES, value=cfg.MODEL_NAME,
                                        label="Base model", allow_custom_value=True)
+            export_rev = gr.Textbox(label="Revision adapter (tùy chọn)",
+                                    placeholder="stage-10k — để trống = nhánh main/mặc định")
             export_model.change(sync_adapter, inputs=[export_model, export_adapter], outputs=export_adapter)
             export_btn = gr.Button("📦 Export ra thư mục (full model)", variant="primary")
             export_log = gr.Textbox(label="Log", lines=20, max_lines=30, autoscroll=True, elem_classes=["log-scroll"])
-            export_btn.click(export_ui, inputs=[export_adapter, export_model], outputs=export_log)
+            export_btn.click(export_ui, inputs=[export_adapter, export_model, export_rev], outputs=export_log)
 
             gguf_btn = gr.Button("⬇ Download file .gguf", variant="primary")
             gguf_status = gr.Markdown()
@@ -572,7 +723,7 @@ def build_app():
             dl_gguf = gr.DownloadButton(
                 f"⬇ Tải {Path(_gguf0).name}" if _gguf0 else "⬇ Tải file GGUF",
                 value=_gguf0, visible=bool(_gguf0))
-            gguf_btn.click(export_gguf_ui, inputs=[export_adapter, export_model],
+            gguf_btn.click(export_gguf_ui, inputs=[export_adapter, export_model, export_rev],
                            outputs=[export_log, dl_gguf, gguf_status])
 
             gr.Markdown("### ⬆ Push GGUF lên Hub (link tải nhanh, ổn định, vĩnh viễn)")

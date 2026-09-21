@@ -22,6 +22,8 @@ def main():
     )
     parser.add_argument("--adapter", type=str, default=None,
                         help="Thư mục adapter hoặc repo id (mặc định: từ config)")
+    parser.add_argument("--adapter-revision", type=str, default=None,
+                        help="Nhanh cua adapter tren Hub (vd stage-10k) - de export dung moc staged")
     parser.add_argument("--model", type=str, default=None,
                         help="Base model (mặc định: từ config) — phải cùng họ với adapter")
     parser.add_argument("--output", type=str, default=None,
@@ -37,7 +39,7 @@ def main():
     out = Path(args.output) if args.output else config.MODELS_DIR / f"{config.ADAPTER_DIR.name}-merged"
 
     print(f"Base : {config.MODEL_NAME}")
-    print(f"LoRA : {adapter}")
+    print(f"LoRA : {adapter}" + (f"@{args.adapter_revision}" if args.adapter_revision else ""))
     print(f"Export: {out}")
 
     try:
@@ -49,7 +51,8 @@ def main():
             attn_implementation=resolve_attn_implementation(config),
             token=config.HF_TOKEN or None,
         )
-        model = PeftModel.from_pretrained(model, adapter, token=config.HF_TOKEN or None)
+        model = PeftModel.from_pretrained(
+            model, adapter, revision=args.adapter_revision, token=config.HF_TOKEN or None)
 
         print("Dang merge LoRA vao base model...")
         merged = model.merge_and_unload()

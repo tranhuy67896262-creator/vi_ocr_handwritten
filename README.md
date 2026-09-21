@@ -31,6 +31,12 @@ Cách **thêm kiến thức mới mà không làm mất kiến thức gốc**: b
 - **7B:** nên chạy QLoRA trên A100 40GB trở lên hoặc H100, bắt đầu với batch `2`.
 - Model mặc định trong config là 3B; truyền `--model` để đổi model.
 
+## 2 tính năng chính
+
+**1. Fine-tune Qwen2.5-VL 3B/7B (tự nối tiếp):** `scripts/stage_train.sh` kiểm tra repo đã train tới mốc nào, kéo adapter mốc mới nhất về train tiếp lát data mới — xem section "Train staged nhiều mốc".
+
+**2. Test → export → Ollama:** eval CER/WER đúng mốc staged, merge LoRA vào base, convert GGUF (`export_gguf.sh`), import vào Ollama (`ollama_create.sh` hoặc `import_models_to_ollama.sh` tự dò thư mục).
+
 ## Cấu trúc
 
 ```
@@ -129,6 +135,20 @@ USE_4BIT=0 BATCH_SIZE=16 GRAD_ACCUM=2 ./scripts/stage_train.sh hf_xxx qwenvl-3b 
 
 # Kiểm tra trước khi chạy thật:
 DRY_RUN=1 ./scripts/stage_train.sh hf_xxx qwenvl-3b <owner>/repo
+```
+
+**Test + đưa mốc staged ra Ollama** (luồng 2 áp cho adapter staged — eval/export đúng revision):
+
+```bash
+# Eval CER/WER đúng mốc stage-10k trên test split:
+python scripts/eval_ocr.py --model tranhuy67896262/Qwen2.5-VL-3B-Instruct-private \
+  --adapter <owner>/repo --adapter-revision stage-10k --num-test 200
+
+# Merge đúng mốc -> convert GGUF -> import Ollama:
+python scripts/export_merged.py --model tranhuy67896262/Qwen2.5-VL-3B-Instruct-private \
+  --adapter <owner>/repo --adapter-revision stage-10k --output models/repo-stage-10k-merged
+./scripts/export_gguf.sh models/repo-stage-10k-merged models/gguf-stage-10k
+./scripts/ollama_create.sh <ten-model> models/gguf-stage-10k
 ```
 
 ## Quy trình chạy an toàn: bắt lỗi sớm (đúc kết từ vụ loss 0.0)
@@ -333,7 +353,7 @@ bash run_train.sh hf_xxx --train \
 | Model | Precision | Batch x Accum (eff) | VRAM ước tính |
 |---|---|---|---|
 | 3B | QLoRA 4-bit (mặc định) | 8 x 4 (32) | ~30-40GB |
-| 3B | LoRA bf16 (`USE_4BIT=0`) | 16 x 2 (32) | ~35-50GB, nhanh hơn ~10-20% |
+| 3B | LoRA bf16 (`USE_4BIT=0`) | 16 x 2 (32) | 39GB (thực đo), còn dư nửa card → thử 24-32 |
 | 7B | LoRA bf16 | 4 x 4 (16) | ~50GB |
 
 Giữ nguyên effective batch khi đổi per-device batch (vd `8x4` ↔ `16x2`) để động lực train không đổi. OOM spike khi gặp batch toàn ảnh max-res → lùi 1 nấc batch hoặc giảm `--max-pixels`.
