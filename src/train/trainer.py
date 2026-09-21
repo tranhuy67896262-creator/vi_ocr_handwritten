@@ -72,14 +72,19 @@ PROGRESS_FILENAME = "stage_progress.json"
 
 
 def _write_progress_file(path, *, start_samples, slice_total, trained_samples,
-                         global_step, hub_revision):
-    """Ghi JSON tiến độ lát đang train (số mẫu đã xong ≈ global_step * eff_batch)."""
+                         global_step, hub_revision, dataset_name=""):
+    """Ghi JSON tiến độ lát đang train (số mẫu đã xong ≈ global_step * eff_batch).
+
+    Ghi cả ``dataset`` để đổi dataset giữa chừng không áp nhầm tiến độ cũ,
+    và để nhìn nhánh Hub là biết mốc đó train data gì.
+    """
     payload = {
         "start_samples": start_samples,
         "slice_total": slice_total,
         "trained_samples": trained_samples,
         "global_step": global_step,
         "hub_revision": hub_revision,
+        "dataset": dataset_name,
     }
     Path(path).write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
     return payload
@@ -94,7 +99,7 @@ class PushOnSaveCallback(TrainerCallback):
     """
 
     def __init__(self, model, processor, hub_repo_id, token, revision,
-                 start_samples=0, slice_total=0, eff_batch=1):
+                 start_samples=0, slice_total=0, eff_batch=1, dataset_name=""):
         self.model = model
         self.processor = processor
         self.hub_repo_id = hub_repo_id
@@ -102,6 +107,7 @@ class PushOnSaveCallback(TrainerCallback):
         self.revision = revision
         self.slice = {"start": start_samples, "total": slice_total,
                       "eff_batch": max(eff_batch, 1)}
+        self.dataset_name = dataset_name
 
     def on_save(self, args, state, control, **kwargs):
         """Gọi sau mỗi checkpoint: push snapshot + file tiến độ lên Hub."""
@@ -115,7 +121,8 @@ class PushOnSaveCallback(TrainerCallback):
             _write_progress_file(
                 progress_path, start_samples=self.slice["start"],
                 slice_total=self.slice["total"], trained_samples=trained,
-                global_step=state.global_step, hub_revision=self.revision)
+                global_step=state.global_step, hub_revision=self.revision,
+                dataset_name=self.dataset_name)
             HfApi(token=self.token).upload_file(
                 path_or_fileobj=str(progress_path), path_in_repo=PROGRESS_FILENAME,
                 repo_id=self.hub_repo_id, revision=self.revision)
@@ -181,6 +188,7 @@ def train(config, model, processor, train_ds, eval_ds=None, push=False, hub_repo
             start_samples=start_samples,
             slice_total=len(train_ds) if train_ds is not None else 0,
             eff_batch=eff_batch,
+            dataset_name=config.DATASET_NAME,
         ))
     resume_path = None
     if resume:
@@ -215,6 +223,15 @@ def train(config, model, processor, train_ds, eval_ds=None, push=False, hub_repo
             revision = hub_revision or "main"
             print(f"Đã push adapter lên Hub: {hub_repo_id}@{revision}")
             pushed = True
+            # Đẩy kèm metadata (dataset, config, init_adapter...) lên cùng nhánh —
+            # nhìn nhánh là biết mốc đó train data gì, nối tiếp không cần đoán.
+            try:
+                HfApi(token=config.HF_TOKEN).upload_file(
+                    path_or_fileobj=str(config.ADAPTER_DIR / "training_metadata.json"),
+                    path_in_repo="training_metadata.json",
+                    repo_id=hub_repo_id, revision=revision)
+            except Exception as exc:
+                print(f"[WARN] Push metadata thất bại (bỏ qua): {type(exc).__name__}: {exc}")
         except Exception as exc:
             # Adapter + metadata local đã lưu xong — chỉ mất push remote, up tay sau được.
             print(f"[WARN] Push cuối thất bại (adapter local vẫn nguyên): {type(exc).__name__}: {exc}")

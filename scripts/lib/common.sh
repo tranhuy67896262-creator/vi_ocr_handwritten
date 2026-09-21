@@ -142,11 +142,41 @@ setup_gpu_env() {
     echo "GPU: $("$PYTHON" -c "import torch; print(torch.cuda.get_device_name(0))" 2>/dev/null || echo 'CPU')"
 }
 
-# Bảo đảm Ollama CLI + server đang chạy (tự `ollama serve` nền nếu OLLAMA_AUTO_START=1).
+# Cài Ollama CLI trên Colab/Linux (apt + install.sh) rồi trả 0; lỗi trả 1.
+# Không hỗ trợ Windows/macOS (cài tay tại https://ollama.com/download).
+install_ollama() {
+    if command -v ollama >/dev/null 2>&1; then
+        return 0
+    fi
+    case "$(uname -s)" in
+        Linux) ;;
+        *) echo "[ERR] Tu cai Ollama chi ho tro Linux/Colab."; return 1 ;;
+    esac
+    if ! command -v curl >/dev/null 2>&1; then
+        echo "[ERR] Thieu curl — khong cai duoc Ollama."
+        return 1
+    fi
+    echo "Cai Ollama (apt update + zstd/curl + install.sh, vai phut)..."
+    sudo apt-get update || return 1
+    sudo apt-get install -y zstd curl || return 1
+    curl -fsSL https://ollama.com/install.sh | sh || return 1
+    command -v ollama >/dev/null 2>&1 || {
+        echo "[ERR] Cai xong ma khong thay ollama."
+        return 1
+    }
+    echo "Da cai Ollama CLI."
+}
+
+# Bảo đảm Ollama CLI + server đang chạy (tự `ollama serve` nền nếu OLLAMA_AUTO_START=1;
+# tự cài CLI nếu OLLAMA_AUTO_INSTALL=1, vd trên Colab mới).
 ensure_ollama_serve() {
     if ! command -v ollama >/dev/null 2>&1; then
-        echo "[ERR] Chua cai Ollama CLI."
-        exit 1
+        if [[ "${OLLAMA_AUTO_INSTALL:-0}" == "1" ]]; then
+            install_ollama || exit 1
+        else
+            echo "[ERR] Chua cai Ollama CLI (Colab: OLLAMA_AUTO_INSTALL=1 de tu cai)."
+            exit 1
+        fi
     fi
     if ollama list >/dev/null 2>&1; then
         return 0

@@ -177,6 +177,13 @@ def _apply_progress(config, args):
             revision=revision or None, token=config.HF_TOKEN)
         with open(local, encoding="utf-8") as handle:
             progress = json.load(handle)
+        # File tiến độ của dataset khác (đổi data giữa chừng) thì không áp —
+        # file cũ (chưa có trường dataset) vẫn áp như trước để tương thích.
+        progress_dataset = progress.get("dataset") or ""
+        if progress_dataset and progress_dataset != config.DATASET_NAME:
+            print(f"[auto-progress] nhánh train trên '{progress_dataset}', "
+                  f"khác dataset đang xin '{config.DATASET_NAME}' — train đủ lát.")
+            return start, count
         done = int(progress.get("trained_samples", 0))
         if (int(progress.get("start_samples", -1)) == start
                 and int(progress.get("slice_total", -1)) == count

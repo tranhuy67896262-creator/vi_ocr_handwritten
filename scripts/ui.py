@@ -1,7 +1,6 @@
 """UI Gradio: Fine-tune / OCR / Eval / Export / Settings."""
 import os
 import re
-import shutil
 import subprocess
 import sys
 from pathlib import Path
@@ -170,6 +169,137 @@ def _stage_env(model, preset):
     return {"USE_4BIT": use_4bit, "BATCH_SIZE": batch, "GRAD_ACCUM": accum}
 
 
+# ---------------- Repo của tôi (chọn repo để train tiếp) ----------------
+
+_REPO_MODEL_CACHE = {}
+
+
+def _repo_latest_stage(repo, token):
+    """(max_k, tên nhánh stage-*) của repo; (None, None) nếu chưa có mốc nào."""
+    from huggingface_hub import HfApi
+    refs = HfApi(token=token).list_repo_refs(repo_id=repo)
+    best_k, best_name = None, None
+    for br in refs.branches:
+        name = br.name
+        if not name.startswith("stage-"):
+            continue
+        core = name[len("stage-"):]
+        knum = core.split("k")[0] if "k" in core else ""
+        if knum.isdigit() and (best_k is None or int(knum) > best_k):
+            best_k, best_name = int(knum), name
+    return best_k, best_name
+
+
+def _repo_model_tag(repo, token, rev):
+    """qwenvl-3b/7b của repo: đọc base model trong adapter_config.json, fallback tên repo."""
+    key = (repo, rev or "main")
+    if key in _REPO_MODEL_CACHE:
+        return _REPO_MODEL_CACHE[key]
+    tag = ""
+    try:
+        import json
+        from huggingface_hub import hf_hub_download
+        path = hf_hub_download(repo_id=repo, filename="adapter_config.json",
+                               revision=rev, token=token)
+        with open(path, encoding="utf-8") as fh:
+            base = json.load(fh).get("base_model_name_or_path", "")
+        low = str(base).lower()
+        if "3b" in low:
+            tag = "qwenvl-3b"
+        elif "7b" in low:
+            tag = "qwenvl-7b"
+    except Exception:
+        pass
+    if not tag:
+        low = repo.lower()
+        if "3b" in low:
+            tag = "qwenvl-3b"
+        elif "7b" in low:
+            tag = "qwenvl-7b"
+    _REPO_MODEL_CACHE[key] = tag
+    return tag
+
+
+def _repo_stage_dataset(repo, token, rev):
+    """Dataset ngắn gọn của mốc staged (đọc stage_progress.json; \"?\" nếu không có)."""
+    key = (repo, rev or "main", "dataset")
+    if key in _REPO_MODEL_CACHE:
+        return _REPO_MODEL_CACHE[key]
+    short = "?"
+    try:
+        import json
+        from huggingface_hub import hf_hub_download
+        path = hf_hub_download(repo_id=repo, filename="stage_progress.json",
+                               revision=rev, token=token)
+        with open(path, encoding="utf-8") as fh:
+            full = json.load(fh).get("dataset", "")
+        if full:
+            short = full.rsplit("/", 1)[-1]
+    except Exception:
+        pass
+    _REPO_MODEL_CACHE[key] = short
+    return short
+
+
+def refresh_my_repos():
+    """Nút tải repo adapter của user: yield (dropdown, state, bảng, trạng thái)."""
+    config = Configs()
+    if not config.HF_TOKEN:
+        yield gr.update(choices=[], value=None), {}, "Chưa có HF_TOKEN — sang tab Settings lưu token trước.", ""
+        return
+    user = _token_username(config.HF_TOKEN)
+    if not user:
+        yield gr.update(choices=[], value=None), {}, "Không đọc được user từ token (offline?).", ""
+        return
+    try:
+        from huggingface_hub import HfApi
+        repos = list(HfApi(token=config.HF_TOKEN).list_models(author=user, limit=50))
+    except Exception as exc:
+        yield gr.update(choices=[], value=None), {}, f"Không liệt kê được repo: {exc}", ""
+        return
+    if not repos:
+        yield gr.update(choices=[], value=None), {}, f"Tài khoản `{user}` chưa có model repo nào.", ""
+        return
+    state, rows, ids = {}, [], [r.id for r in repos]
+    for pos, rid in enumerate(ids, 1):
+        yield gr.skip(), {}, "\n".join(rows), f"⏳ Đang đọc {rid} ({pos}/{len(ids)})..."
+        try:
+            maxk, stagename = _repo_latest_stage(rid, config.HF_TOKEN)
+        except Exception:
+            maxk, stagename = None, None
+        tag = _repo_model_tag(rid, config.HF_TOKEN, stagename)
+        model_txt = {"qwenvl-3b": "3B", "qwenvl-7b": "7B"}.get(tag, "?")
+        if maxk is None:
+            rows.append(f"| `{rid}` | {model_txt} | — | trắng (từ 0) | — |")
+            trained = 0
+        else:
+            data_txt = _repo_stage_dataset(rid, config.HF_TOKEN, stagename)
+            rows.append(f"| `{rid}` | {model_txt} | `{stagename}` | ~{maxk}k mẫu | `{data_txt}` |")
+            trained = maxk
+        state[rid] = {"repo": rid, "model": tag or "qwenvl-3b",
+                      "trained_k": trained, "stage": stagename or ""}
+    table = ("| Repo | Model | Mốc mới nhất | Đã train | Data |\n"
+             "|---|---|---|---|---|\n" + "\n".join(rows))
+    done_msg = f"✅ {len(ids)} repo của `{user}` — chọn 1 dòng ở ô dưới để nối tiếp."
+    yield gr.update(choices=ids), state, table, done_msg
+
+
+def on_repo_select(repo_id, state):
+    """Chọn repo cũ -> set model + báo mốc nối tiếp; gõ tên mới -> giữ model, báo trắng."""
+    repo_id = (repo_id or "").strip()
+    if not repo_id:
+        return gr.skip(), ""
+    info = (state or {}).get(repo_id, {})
+    if not info:
+        return gr.skip(), ("Repo mới gõ tay → sẽ **train trắng từ 0** "
+                            "(nhập đúng `owner/repo` nếu repo đã có trên Hub).")
+    model_update = gr.update(value=info["model"]) if info.get("model") else gr.skip()
+    if info.get("stage"):
+        return model_update, (f"▶ Sẽ **nối tiếp từ `{info['stage']}`** "
+                               f"(~{info['trained_k']}k mẫu) — bấm ▶ để chạy.")
+    return model_update, "Repo chưa có mốc stage → sẽ **train trắng từ 0**."
+
+
 def _stage_extra_env(dataset, force_start, epochs):
     """Env thêm cho stage_train.sh: đổi dataset / ép start / số epoch mỗi lát."""
     env = {}
@@ -309,207 +439,99 @@ def eval_ui(num_test, adapter, model, revision):
 
 # ---------------- Export ----------------
 
-def export_ui(adapter, model, revision):
-    """Chạy export_merged.py, log realtime (revision: merge đúng mốc staged)."""
-    _free_gpu()
-    cmd = [sys.executable, str(SCRIPT / "export_merged.py")]
-    if adapter and adapter.strip():
-        cmd += ["--adapter", adapter.strip()]
-    if model and model.strip():
-        cmd += ["--model", model.strip()]
-    if revision and revision.strip():
-        cmd += ["--adapter-revision", revision.strip()]
-    yield from _run(cmd)
+# ---------------- Export 1 nút (UI chỉ orchestrate, logic ở src/export/) ----------------
 
+def _stream_service(target, log_lines):
+    """Chạy 1 service call trong thread, stream log realtime vào log_lines.
 
-def _latest_gguf():
-    """File .gguf mới nhất (ưu tiên bản Q6_K), hoặc None nếu chưa có."""
-    files = sorted((PROJECT_ROOT / "models" / "gguf").glob("*.gguf"))
-    if not files:
-        return None
-    q6 = [f for f in files if "Q6_K" in f.name]
-    pick = q6[-1] if q6 else files[-1]
-    return str(pick)
-
-
-def _merge_is_fresh(merge_dir, adapter):
-    """Merged còn dùng được nếu có safetensors và mới hơn adapter local.
-    Adapter là repo Hub (không có local) thì luôn merge lại cho chắc."""
-    m = Path(merge_dir)
-    if not m.exists() or not list(m.glob("*.safetensors")):
-        return False
-    src = Path(adapter)
-    if not src.exists():
-        return False
-
-    def _newest(p):
-        fs = [f for f in p.rglob("*") if f.is_file()]
-        return max((f.stat().st_mtime for f in fs), default=0)
-
-    return _newest(m) >= _newest(src)
-
-
-def export_gguf_ui(adapter, model, revision):
-    """Nút Download .gguf: bỏ qua merge nếu thư mục merged còn mới,
-    rồi convert + quantize. Chỉ Linux/Colab.
-
-    YIELD tuple 3 phần tử (log, download, status) — Gradio bắt lỗi nếu lệch.
+    ``target`` nhận callback emit(line). Yield nội dung log sau mỗi dòng mới,
+    return kết quả của target (lấy qua ``yield from``).
     """
-    _hidden = gr.DownloadButton(visible=False)
+    import queue
+    import threading
+    box, que = {}, queue.Queue()
+
+    def _emit(line):
+        que.put(line)
+
+    def _wrap():
+        try:
+            box["result"] = target(_emit)
+        except Exception as exc:
+            que.put(f"[ERR] Lỗi không mong đợi: {exc}")
+            box["result"] = None
+
+    thread = threading.Thread(target=_wrap, daemon=True)
+    thread.start()
+    while thread.is_alive():
+        try:
+            log_lines.append(que.get(timeout=2))
+            yield "\n".join(log_lines)
+        except Exception:
+            pass
+    thread.join()
+    while not que.empty():
+        log_lines.append(que.get_nowait())
+    return box.get("result")
+
+
+def export_import_ollama_ui(adapter, model, revision, ollama_name, ollama_hub):
+    """1 NÚT duy nhất: Ollama sẵn sàng -> build GGUF -> import (+ push Hub nếu điền)."""
+    from src.export.bundle import GgufBundle
+    from src.export.ollama_env import OllamaEnv
+    from src.export.ollama_import import OllamaImporter, default_ollama_name
+
     if sys.platform == "win32":
-        yield (("Export GGUF cần Linux/Colab (build llama.cpp) — "
-                "không chạy trên Windows."), _hidden, "")
+        yield "Export GGUF cần Linux/Colab (build llama.cpp) — không chạy trên Windows."
         return
     _free_gpu()
     config = Configs()
     adapter = (adapter or "").strip() or str(config.ADAPTER_DIR)
     model = (model or "").strip() or config.MODEL_NAME
     revision = (revision or "").strip()
-    merge_dir = str(PROJECT_ROOT / "models" / f"{Path(adapter).name}-merged")
-    log = ""
-    if _merge_is_fresh(merge_dir, adapter):
-        log = f"Dùng merged có sẵn (mới hơn adapter): {merge_dir}\n"
-        yield log, _hidden, "⏳ Đang convert GGUF (xem Log)..."
-    else:
-        cmd1 = [sys.executable, str(SCRIPT / "export_merged.py"),
-                "--adapter", adapter, "--model", model, "--output", merge_dir]
-        if revision:
-            cmd1 += ["--adapter-revision", revision]
-        for chunk in _run(cmd1, "> " + " ".join(cmd1) + "\n"):
-            log = chunk
-            yield log, _hidden, "⏳ Đang merge adapter (vài phút)..."
-    cmd2 = ["bash", str(SCRIPT / "export_gguf.sh"), merge_dir]
-    for chunk in _run(cmd2, log):
-        log = chunk
-        yield (log, _hidden,
-               "⏳ Đang build/convert GGUF — lần đầu lâu (10–20 phút). "
-               "Xong sẽ hiện nút tải file bên dưới.")
-    gguf = _latest_gguf()
-    if gguf:
-        yield (log + f"\n✅ GGUF: {gguf}",
-               gr.DownloadButton(value=gguf, visible=True,
-                                 label=f"⬇ Tải {Path(gguf).name}"),
-               "✅ Xong — bấm nút tải file bên dưới.")
-    else:
-        yield (log + "\n[WARN] Không thấy file .gguf — xem log convert.",
-               _hidden, "⚠️ Thất bại — xem Log.")
-
-
-def _mmproj_sibling(gguf_path):
-    """File mmproj cùng thư mục với gguf (nếu có) — Ollama/llama.cpp cần để OCR ảnh."""
-    cands = sorted(Path(gguf_path).parent.glob("*mmproj*.gguf"))
-    picked = [c for c in cands if str(c) != str(gguf_path)]
-    return str(picked[0]) if picked else None
-
-
-def _default_ollama_name():
-    """Tên model Ollama gợi ý từ file gguf mới nhất (bỏ hậu tố quant)."""
-    gguf = _latest_gguf()
-    if not gguf:
-        return "qwen25vl-3b-vi-hwr"
-    stem = Path(gguf).stem
-    for suf in ("-Q6_K", "-Q4_K_M", "-Q4_0", "-Q8_0", "-f16"):
-        if stem.endswith(suf):
-            stem = stem[: -len(suf)]
-            break
-    return stem
-
-
-def import_ollama_ui(model_name):
-    """Import gguf + Modelfile vào Ollama đang chạy (`ollama create`)."""
-    name = (model_name or "").strip() or _default_ollama_name()
-    gguf = _latest_gguf()
-    if not gguf:
-        msg = "Chưa có file .gguf — bấm Download file .gguf để export trước."
-        yield msg, msg
+    name = (ollama_name or "").strip() or default_ollama_name(adapter, revision)
+    hub_name = (ollama_hub or "").strip()
+    log_lines = [f"Adapter: {adapter}", f"Model: {model}",
+                 f"Revision: {revision or '(mặc định)'}", f"Ollama: {name}",
+                 f"Ollama Hub: {hub_name or '(bỏ qua)'}"]
+    yield "\n".join(log_lines) + "\n⏳ Bước 0/3 — kiểm tra Ollama (Colab tự cài + serve nếu thiếu)..."
+    env_ok = yield from _stream_service(OllamaEnv().ensure, log_lines)
+    if not env_ok:
+        yield "\n".join(log_lines) + "\n[ERR] Ollama chưa sẵn sàng — dừng."
         return
-    if shutil.which("ollama") is None:
-        msg = ("Chưa có Ollama CLI — cài tại https://ollama.com/download "
-               "(Colab: curl -fsSL https://ollama.com/install.sh | sh).")
-        yield msg, msg
+    log_lines.append("⏳ Bước 1-2/3 — merge adapter + convert GGUF (lần đầu 10–20 phút)...")
+    yield "\n".join(log_lines)
+    bundle = GgufBundle()
+    gguf_dir = yield from _stream_service(
+        lambda emit: bundle.build(
+            adapter=adapter, model=model, revision=revision,
+            models_dir=str(config.MODELS_DIR), python_exe=sys.executable,
+            scripts_dir=str(SCRIPT), emit=emit),
+        log_lines)
+    if not gguf_dir:
+        yield "\n".join(log_lines) + "\n[ERR] Không build được gói GGUF."
         return
-    gguf_dir = str(Path(gguf).parent)
-    if not Path(gguf_dir, "Modelfile").exists():
-        msg = f"Thiếu {gguf_dir}/Modelfile — bấm Download file .gguf để sinh lại."
-        yield msg, msg
+    log_lines.append(f"⏳ Bước 3/3 — import vào Ollama (`ollama create {name}`)...")
+    yield "\n".join(log_lines)
+    importer = OllamaImporter()
+    imported = yield from _stream_service(
+        lambda emit: importer.import_bundle(gguf_dir, name, emit),
+        log_lines)
+    if not imported:
+        yield "\n".join(log_lines) + "\n[ERR] Import Ollama thất bại."
         return
-    try:
-        r = subprocess.run(["ollama", "list"], capture_output=True, timeout=30, check=False)
-        server_ok = r.returncode == 0
-    except Exception:
-        server_ok = False
-    if not server_ok:
-        msg = "Ollama server chưa chạy — chạy `ollama serve` trước (Colab chạy nền). "
-        yield msg, msg
-        return
-    log = ""
-    for chunk in _run(["ollama", "create", name, "-f", "Modelfile"],
-                      f"> ollama create {name} -f Modelfile\n", cwd=gguf_dir):
-        log = chunk
-        yield log, "⏳ Đang import vào Ollama..."
-    yield (log, f"✅ Xong — test: `ollama run {name} \"Đọc chữ trong ảnh\" -- /path/to/anh.jpg`")
-
-
-def push_gguf_ui(hub_repo):
-    """Push file .gguf mới nhất lên Hugging Face Hub để có link tải nhanh/ổn định."""
-    hub_repo = (hub_repo or "").strip()
-    if "/" not in hub_repo:
-        return "Nhập repo id dạng `owner/repo` (vd `username/qwen25vl-3b-vi-hwr-gguf`)."
-    config = Configs()
-    if not config.HF_TOKEN:
-        return "Chưa có HF_TOKEN — sang tab Settings lưu token trước."
-    gguf = _latest_gguf()
-    if not gguf:
-        return "Chưa có file .gguf — bấm Download file .gguf để export trước."
-    try:
-        from huggingface_hub import HfApi
-        api = HfApi(token=config.HF_TOKEN)
-        api.create_repo(hub_repo, exist_ok=True, token=config.HF_TOKEN)
-        name = Path(gguf).name
-        api.upload_file(path_or_fileobj=gguf, path_in_repo=name,
-                        repo_id=hub_repo, token=config.HF_TOKEN)
-        urls = [f"https://huggingface.co/{hub_repo}/blob/main/{name}"]
-        mm = _mmproj_sibling(gguf)
-        if mm:
-            mname = Path(mm).name
-            api.upload_file(path_or_fileobj=mm, path_in_repo=mname,
-                            repo_id=hub_repo, token=config.HF_TOKEN)
-            urls.append(f"https://huggingface.co/{hub_repo}/blob/main/{mname}")
-        modelfile = Path(gguf).parent / "Modelfile"
-        if modelfile.exists():
-            api.upload_file(path_or_fileobj=str(modelfile), path_in_repo="Modelfile",
-                            repo_id=hub_repo, token=config.HF_TOKEN)
-            urls.append(f"https://huggingface.co/{hub_repo}/blob/main/Modelfile")
-        return ("✅ Đã push:\n" + "\n".join(urls) + "\n"
-                "Tải cả 3 file (.gguf text + mmproj + Modelfile) về cùng thư mục rồi "
-                "`ollama create <ten> -f Modelfile`.")
-    except Exception as exc:
-        return _push_error(exc)
-
-
-def push_adapter_ui(hub_repo, adapter):
-    """Push thư mục adapter local lên Hugging Face Hub."""
-    hub_repo = (hub_repo or "").strip()
-    if "/" not in hub_repo:
-        return "Nhập repo id dạng `owner/repo` (vd `username/qwen25vl-3b-vi-hwr-lora`)."
-    config = Configs()
-    if not config.HF_TOKEN:
-        return "Chưa có HF_TOKEN — sang tab Settings lưu token trước."
-    adapter = (adapter or "").strip() or str(config.ADAPTER_DIR)
-    src = Path(adapter)
-    if not src.exists():
-        return (f"Adapter `{adapter}` không có local (repo Hub hoặc sai path) — "
-                f"không có gì để push.")
-    try:
-        from huggingface_hub import HfApi
-        api = HfApi(token=config.HF_TOKEN)
-        api.create_repo(hub_repo, exist_ok=True, token=config.HF_TOKEN)
-        api.upload_folder(folder_path=str(src), repo_id=hub_repo,
-                          token=config.HF_TOKEN)
-        return (f"✅ Đã push adapter: https://huggingface.co/{hub_repo}\n"
-                f"Dùng trực tiếp ở ô Adapter bằng repo id `{hub_repo}`.")
-    except Exception as exc:
-        return _push_error(exc)
+    if hub_name:
+        log_lines.append(f"⏳ Bước 4/3 — push lên Ollama Hub (`ollama push {hub_name}`)...")
+        yield "\n".join(log_lines)
+        pushed = yield from _stream_service(
+            lambda emit: importer.push_model(hub_name, emit),
+            log_lines)
+        if not pushed:
+            yield ("\n".join(log_lines) + "\n[ERR] Push Ollama Hub thất bại "
+                   "(lần đầu cần `ollama signin` 1 lần trên máy này).")
+            return
+    yield ("\n".join(log_lines) + f"\n✅ Xong — test: `ollama run {name} "
+           f"\"Đọc chữ trong ảnh\" -- /path/to/anh.jpg`")
 
 
 def _fmt_size(n):
@@ -591,15 +613,6 @@ def _token_username(token):
         return None
 
 
-def _push_error(exc):
-    s = str(exc)
-    if "403" in s or "Forbidden" in s:
-        return (f"[ERROR] Push thất bại (403 - không có quyền): {s}\n"
-                f"Nguyên nhân thường gặp: repo owner khác tài khoản của token, "
-                f"hoặc token loại Read (cần Write). Xem tên tài khoản ở tab Settings.")
-    return f"[ERROR] Push thất bại: {exc}"
-
-
 def save_token(token):
     """Lưu HF_TOKEN vào .env.dev, trả (message, status mới)."""
     tok = (token or "").strip()
@@ -633,16 +646,31 @@ def build_app():
                 "đang có — script tự dò nhánh `stage-*` cao nhất trên Hub, kéo adapter về "
                 "train tiếp, push nhánh mới. Không cần nhớ start/init."
             )
+            gr.Markdown("### 📂 Repo adapter — chọn repo cũ để nối tiếp, gõ tên mới để train trắng")
             with gr.Row():
-                stage_repo = gr.Textbox(
-                    label="Repo adapter (owner/repo)",
-                    placeholder="username/qwen25vl-3b-vi-hwr-lora (thiếu owner → lấy user của token)",
+                refresh_btn = gr.Button("🔄 Tải danh sách repo của tôi", variant="secondary")
+            repo_state = gr.State({})
+            repo_table = gr.Markdown()
+            repo_status = gr.Markdown()
+            with gr.Row():
+                stage_repo = gr.Dropdown(
+                    choices=[], label="Repo adapter (chọn cũ / gõ mới: owner/repo)",
+                    allow_custom_value=True,
                 )
                 stage_model = gr.Dropdown(
                     choices=STAGE_MODELS,
                     value="qwenvl-3b", label="Model",
                     allow_custom_value=True,
                 )
+            refresh_btn.click(
+                refresh_my_repos,
+                outputs=[stage_repo, repo_state, repo_table, repo_status],
+            )
+            stage_repo.change(
+                on_repo_select,
+                inputs=[stage_repo, repo_state],
+                outputs=[stage_model, repo_status],
+            )
             with gr.Row():
                 stage_count = gr.Textbox(
                     value="5000", label="Số mẫu mỗi lát (count)",
@@ -654,11 +682,11 @@ def build_app():
                 )
                 stage_preset = gr.Radio(
                     choices=[
-                        "Auto theo model (3B: batch 8 QLoRA · 7B: batch 4 bf16)",
+                        "Auto theo model (bf16 batch 8 cho cả 3B/7B)",
                         "Nhanh nhất (A100 80GB — 3B bf16 batch 16 · 7B bf16 batch 8)",
-                        "Tiết kiệm VRAM (batch 2)",
+                        "Tiết kiệm VRAM (3B QLoRA batch 2)",
                     ],
-                    value="Auto theo model (3B: batch 8 QLoRA · 7B: batch 4 bf16)",
+                    value="Auto theo model (bf16 batch 8 cho cả 3B/7B)",
                     label="Chế độ batch",
                 )
             with gr.Row():
@@ -755,44 +783,24 @@ def build_app():
             eval_btn.click(eval_ui, inputs=[num_test, eval_adapter, eval_model, eval_rev], outputs=eval_log)
 
         with gr.Tab("Export"):
+            gr.Markdown("1 nút duy nhất: merge adapter → convert GGUF → import vào Ollama "
+                        "(Colab tự cài + chạy Ollama server nếu thiếu). Chỉ Linux/Colab.")
             export_adapter = gr.Textbox(value=str(cfg.ADAPTER_DIR), label="Adapter")
             export_model = gr.Dropdown(choices=MODEL_CHOICES, value=cfg.MODEL_NAME,
                                        label="Base model", allow_custom_value=True)
             export_rev = gr.Textbox(label="Revision adapter (tùy chọn)",
                                     placeholder="stage-10k — để trống = nhánh main/mặc định")
             export_model.change(sync_adapter, inputs=[export_model, export_adapter], outputs=export_adapter)
-            export_btn = gr.Button("📦 Export ra thư mục (full model)", variant="primary")
+            ollama_name_in = gr.Textbox(label="Tên model Ollama (trống = tự đặt theo adapter)",
+                                        placeholder="vd qwen25vl-3b-vi-hwr")
+            ollama_hub_in = gr.Textbox(label="Đẩy lên Ollama Hub (tùy chọn)",
+                                       placeholder="owner/model — trống = bỏ qua (cần ollama signin 1 lần)")
+            one_btn = gr.Button("🦙 Export GGUF + Import vào Ollama", variant="primary")
             export_log = gr.Textbox(label="Log", lines=20, max_lines=30, autoscroll=True, elem_classes=["log-scroll"])
-            export_btn.click(export_ui, inputs=[export_adapter, export_model, export_rev], outputs=export_log)
-
-            gguf_btn = gr.Button("⬇ Download file .gguf", variant="primary")
-            gguf_status = gr.Markdown()
-            _gguf0 = _latest_gguf()
-            dl_gguf = gr.DownloadButton(
-                f"⬇ Tải {Path(_gguf0).name}" if _gguf0 else "⬇ Tải file GGUF",
-                value=_gguf0, visible=bool(_gguf0))
-            gguf_btn.click(export_gguf_ui, inputs=[export_adapter, export_model, export_rev],
-                           outputs=[export_log, dl_gguf, gguf_status])
-
-            gr.Markdown("### ⬆ Push GGUF lên Hub (link tải nhanh, ổn định, vĩnh viễn)")
-            hub_repo_in = gr.Textbox(label="Repo Hub (owner/repo)",
-                                     placeholder="username/qwen25vl-3b-vi-hwr-gguf")
-            push_btn = gr.Button("⬆ Push file .gguf lên Hub", variant="secondary")
-            push_msg = gr.Markdown()
-            push_btn.click(push_gguf_ui, inputs=[hub_repo_in], outputs=push_msg)
-
-            push_ad_btn = gr.Button("⬆ Push adapter lên Hub", variant="secondary")
-            push_ad_msg = gr.Markdown()
-            push_ad_btn.click(push_adapter_ui, inputs=[hub_repo_in, export_adapter],
-                              outputs=push_ad_msg)
-
-            gr.Markdown("### 🦙 Import vào Ollama đang chạy trên máy này")
-            ollama_name_in = gr.Textbox(value=_default_ollama_name(),
-                                        label="Tên model Ollama")
-            import_btn = gr.Button("🦙 Import .gguf vào Ollama", variant="secondary")
-            import_msg = gr.Markdown()
-            import_btn.click(import_ollama_ui, inputs=[ollama_name_in],
-                             outputs=[export_log, import_msg])
+            one_btn.click(export_import_ollama_ui,
+                          inputs=[export_adapter, export_model, export_rev,
+                                  ollama_name_in, ollama_hub_in],
+                          outputs=export_log)
 
         with gr.Tab("Settings"):
             tok_status = gr.Markdown(value=token_status())

@@ -13,17 +13,17 @@
 # Flow cũ (tương thích): <model> <start> <end> <init_rev> [step] [save_steps] [hub_repo]
 #   1 mốc duy nhất (end-start <= step) -> chạy nền nohup, log train-<run>.log
 #   nhiều mốc -> chạy foreground nối tiếp, bắt buộc tmux (rớt SSH không chết chuỗi)
-#   vd 3B 10k đầu trên A100 80GB:
-#     BATCH_SIZE=8 GRAD_ACCUM=4 ./scripts/stage_train.sh 3b 0 10k none
+#   vd 3B 10k đầu trên A100 80GB (mặc định bf16 batch 8, eff 32):
+#     ./scripts/stage_train.sh 3b 0 10k none
 #
 # Mapping từ lệnh cũ sang flow gọn (cùng kết quả khi repo đã tới đúng mốc init):
 #   stage_train.sh 7b 5k 15k stage-5k 10k 50 -> stage_train.sh <token> qwenvl-7b <repo> 10k 50
 #   (repo đã tới stage-5k; count 10k = lát 5k->15k; save_steps 50)
-#   3B 10k đầu trên A100 80GB:
-#     BATCH_SIZE=8 GRAD_ACCUM=4 ./scripts/stage_train.sh <token> qwenvl-3b <repo> 10k
+#   3B 10k đầu trên A100 80GB (mặc định bf16 batch 8, eff 32):
+#     ./scripts/stage_train.sh <token> qwenvl-3b <repo> 10k
 #
-# Env: BATCH_SIZE (mặc định 8 cho 3b, 4 cho 7b), GRAD_ACCUM (=4), LR (=2e-5),
-#   USE_4BIT (auto: 3b -> 1 QLoRA, còn lại -> 0 bf16 --no-4bit), EPOCHS (=1),
+# Env: BATCH_SIZE (mặc định 8 cho cả 3b/7b), GRAD_ACCUM (=4), LR (=2e-5),
+#   USE_4BIT (auto = 0 bf16 --no-4bit; GPU nhỏ ép QLoRA bằng USE_4BIT=1), EPOCHS (=1),
 #   DATASET (mặc định mirror v2-local), HUB_REPO/INIT_REPO,
 #   LORA_R/LORA_ALPHA (chỉ khi train trắng), SUFFIX (giữ -v2 khi nối chuỗi -v2 cũ),
 #   FORCE_START (đổi dataset giữa chừng: ép start, init vẫn lấy mốc mới nhất),
@@ -90,23 +90,18 @@ else
     MODEL=$(resolve_model "$MODEL_ARG")
 fi
 DATASET="${DATASET:-tranhuy67896262/Viet-Handwriting-OCR-v2-local}"
-# Batch mặc định theo model (A100 80GB: 3b eff 8x4=32, 7b eff 4x4=16). Ghi đè qua env.
-case "$(echo "$MODEL" | tr '[:upper:]' '[:lower:]')" in
-    *3b*) DEFAULT_BATCH=8 ;;
-    *) DEFAULT_BATCH=4 ;;
-esac
+# Batch mặc định 8 cho cả 3b/7b (A100 80GB: eff 8x4=32). Ghi đè qua env.
+DEFAULT_BATCH=8
 BATCH_SIZE="${BATCH_SIZE:-$DEFAULT_BATCH}"
 GRAD_ACCUM="${GRAD_ACCUM:-4}"
 LR="${LR:-2e-5}"
 LORA_R="${LORA_R:-}"
 LORA_ALPHA="${LORA_ALPHA:-}"
-# USE_4BIT=auto (mặc định): 3b -> 1 (QLoRA, bỏ --no-4bit), còn lại -> 0 (bf16 --no-4bit).
+# USE_4BIT=auto (mặc định): staged luôn bf16 --no-4bit (3b và 7b);
+# cần QLoRA cho GPU nhỏ thì export USE_4BIT=1.
 USE_4BIT="${USE_4BIT:-auto}"
 if [ "$USE_4BIT" = "auto" ]; then
-    case "$(echo "$MODEL" | tr '[:upper:]' '[:lower:]')" in
-        *3b*) USE_4BIT="1" ;;
-        *) USE_4BIT="0" ;;
-    esac
+    USE_4BIT="0"
 fi
 PRECISION_FLAG="--no-4bit"
 if [ "$USE_4BIT" = "1" ]; then

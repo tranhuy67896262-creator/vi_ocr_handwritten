@@ -121,13 +121,13 @@ Smoke pipeline thực hiện: train 10 ảnh → OCR bằng adapter HF → merge
 - `<repo>`: `owner/repo` (thiếu owner → lấy user của token). Token truyền tay được lưu `.env.dev`; thiếu/sai → script hỏi nhập, kiểm tra qua API Hub rồi tự lưu.
 - `start`/`init` tự dò: repo đã tới `stage-10k` → train tiếp từ mẫu 10000 với adapter `repo@stage-10k`; repo mới → train trắng từ 0, push nhánh `stage-5k`.
 - Mỗi lần chạy = 1 lát, chạy nền nohup, log `train-<run>.log` — xem bằng `tail -n 5`, không `tail -f`. Không chạy 2 train chung 1 GPU.
-- Batch/precision auto theo model (3B: batch 8 QLoRA; 7B: batch 4 bf16), ghi đè qua `BATCH_SIZE`/`GRAD_ACCUM`/`USE_4BIT`. `DRY_RUN=1` để xem kế hoạch (start/init/rev) mà không train.
+- Batch/precision auto: bf16 batch 8 cho cả 3B/7B (eff 32), ghi đè qua `BATCH_SIZE`/`GRAD_ACCUM`/`USE_4BIT` (GPU nhỏ ép QLoRA bằng `USE_4BIT=1`). `DRY_RUN=1` để xem kế hoạch (start/init/rev) mà không train.
 
 ```bash
-# 3B QLoRA, lát 10k đầu trên A100 80GB (mặc định batch 8, eff 32):
+# 3B bf16, lát 10k đầu trên A100 80GB (mặc định batch 8, eff 32):
 ./scripts/stage_train.sh hf_xxx qwenvl-3b <owner>/repo 10k
 
-# Nhanh nhất (LoRA bf16 + batch 16, ~35-50GB VRAM):
+# Nhanh nhất 3B (batch 16, thực đo 39GB, peak ~71GB lúc eval+save):
 USE_4BIT=0 BATCH_SIZE=16 GRAD_ACCUM=2 ./scripts/stage_train.sh hf_xxx qwenvl-3b <owner>/repo 10k
 
 # Nối tiếp lát sau — không cần nhớ start, script tự thấy repo đã tới stage-10k:
@@ -372,9 +372,9 @@ bash run_train.sh hf_xxx --train \
 **A100 80GB + train staged (`scripts/stage_train.sh`, xem section trên):**
 | Model | Precision | Batch x Accum (eff) | VRAM ước tính |
 |---|---|---|---|
-| 3B | QLoRA 4-bit (mặc định) | 8 x 4 (32) | ~30-40GB |
-| 3B | LoRA bf16 (`USE_4BIT=0`) | 16 x 2 (32) | 39GB (thực đo), còn dư nửa card → thử 24-32 |
-| 7B | LoRA bf16 | 4 x 4 (16) | ~50GB |
+| 3B/7B | LoRA bf16 (mặc định staged) | 8 x 4 (32) | 3B ~25-40GB · 7B ~50GB |
+| 3B | LoRA bf16 (`BATCH_SIZE=16 GRAD_ACCUM=2`) | 16 x 2 (32) | 39GB (thực đo), peak ~71GB lúc eval+save |
+| 3B | QLoRA 4-bit (`USE_4BIT=1`) | 8 x 4 (32) | GPU nhỏ (~14GB) |
 
 Giữ nguyên effective batch khi đổi per-device batch (vd `8x4` ↔ `16x2`) để động lực train không đổi. OOM spike khi gặp batch toàn ảnh max-res → lùi 1 nấc batch hoặc giảm `--max-pixels`.
 
