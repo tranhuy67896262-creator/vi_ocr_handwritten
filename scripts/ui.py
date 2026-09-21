@@ -159,7 +159,11 @@ def stage_progress_ui(repo, model):
 
 
 def _stage_env(model, preset):
-    """Env batch/precision cho stage_train.sh theo preset đã chọn."""
+    """Env batch/precision + mode 7B cho stage_train.sh theo preset đã chọn.
+
+    Mode 7B khác 3B: luôn gửi LORA_R=64/LORA_ALPHA=128 (script chỉ dùng khi
+    train trắng, nối chain cũ thì bỏ qua). KL giữ mặc định cả 2 mode.
+    """
     label = (preset or "")
     if label.startswith("Nhanh"):
         key = "fast"
@@ -167,12 +171,17 @@ def _stage_env(model, preset):
         key = "saver"
     else:
         key = "auto"
-    if key == "auto":
-        return {}
     short = (model or "").strip().lower()
     tag = "qwenvl-7b" if "7b" in short else "qwenvl-3b"
+    env = {}
+    if "7b" in short:
+        env["LORA_R"] = "64"
+        env["LORA_ALPHA"] = "128"
+    if key == "auto":
+        return env
     use_4bit, batch, accum = BATCH_PRESETS[key][tag]
-    return {"USE_4BIT": use_4bit, "BATCH_SIZE": batch, "GRAD_ACCUM": accum}
+    env.update({"USE_4BIT": use_4bit, "BATCH_SIZE": batch, "GRAD_ACCUM": accum})
+    return env
 
 
 # ---------------- Repo của tôi (chọn repo để train tiếp) ----------------
@@ -306,18 +315,22 @@ def on_repo_select(repo_id, state):
     return model_update, "Repo chưa có mốc stage → sẽ **train trắng từ 0**."
 
 
-def _stage_extra_env(dataset, force_start, epochs):
-    """Env thêm cho stage_train.sh: đổi dataset / ép start / số epoch mỗi lát."""
+def _stage_extra_env(dataset, force_start, epochs, model=None):
+    """Env thêm cho stage_train.sh: đổi dataset / ép start / số epoch mỗi lát.
+
+    Epoch mặc định theo mode (3B=1, 7B=2) — chỉ gửi env khi user đổi khác default.
+    """
     env = {}
     if dataset and dataset.strip():
         env["DATASET"] = dataset.strip()
     if force_start is not None and str(force_start).strip() != "":
         env["FORCE_START"] = str(force_start).strip()
+    default_ep = 2 if "7b" in (model or "").strip().lower() else 1
     try:
-        ep = int(epochs) if epochs is not None else 1
+        ep = int(epochs) if epochs is not None else default_ep
     except (TypeError, ValueError):
-        ep = 1
-    if ep != 1:
+        ep = default_ep
+    if ep != default_ep:
         env["EPOCHS"] = str(ep)
     return env
 
@@ -334,7 +347,7 @@ def stage_dryrun_ui(repo, model, count, save_steps, preset, dataset, force_start
            (count or "5000").strip(), str(int(save_steps or 50))]
     env = {"DRY_RUN": "1"}
     env.update(_stage_env(model, preset))
-    env.update(_stage_extra_env(dataset, force_start, epochs))
+    env.update(_stage_extra_env(dataset, force_start, epochs, model))
     if warn:
         yield warn + "\n"
     yield from _run(cmd, "> " + " ".join(cmd) + "\n", env=env)
@@ -351,7 +364,7 @@ def stage_train_ui(repo, model, count, save_steps, preset, dataset, force_start,
            (model or "qwenvl-3b").strip(), repo_full,
            (count or "5000").strip(), str(int(save_steps or 50))]
     env = _stage_env(model, preset)
-    env.update(_stage_extra_env(dataset, force_start, epochs))
+    env.update(_stage_extra_env(dataset, force_start, epochs, model))
     if warn:
         yield warn + "\n"
     yield from _run(cmd, "> " + " ".join(cmd) + "\n", env=env)
@@ -713,9 +726,15 @@ def build_app():
                         placeholder="trống = tự dò từ Hub; 0 = về đầu dataset mới",
                     )
                     stage_epochs = gr.Number(
-                        value=1, label="Epoch mỗi lát (EPOCHS)",
+                        value=1, label="Epoch mỗi lát (EPOCHS — mặc định 3B:1, 7B:2)",
                         precision=0, minimum=1,
                     )
+            # Đổi model -> tự gợi ý epoch theo mode (user vẫn sửa tay được).
+            stage_model.change(
+                lambda m: gr.update(value=2 if "7b" in (m or "").lower() else 1),
+                inputs=stage_model,
+                outputs=stage_epochs,
+            )
             with gr.Row():
                 progress_btn = gr.Button("🔍 Kiểm tra repo tới đâu", variant="secondary")
                 dry_btn = gr.Button("📋 Xem kế hoạch (không train)", variant="secondary")

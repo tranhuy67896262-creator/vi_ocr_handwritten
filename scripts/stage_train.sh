@@ -23,10 +23,12 @@
 #     ./scripts/stage_train.sh <token> qwenvl-3b <repo> 10k
 #
 # Env: BATCH_SIZE (mặc định 8 cho cả 3b/7b), GRAD_ACCUM (=4), LR (=2e-5),
-#   USE_4BIT (auto = 0 bf16 --no-4bit; GPU nhỏ ép QLoRA bằng USE_4BIT=1), EPOCHS (=1),
+#   USE_4BIT (auto = 0 bf16 --no-4bit; GPU nhỏ ép QLoRA bằng USE_4BIT=1),
+#   EPOCHS (mặc định theo mode: 3B=1, 7B=2),
 #   DATASET (mặc định mirror v2-local), HUB_REPO/INIT_REPO,
-#   LORA_R/LORA_ALPHA (chỉ khi train trắng), KL_COEF (hạ KL khi 7B underfit,
-#   vd 0.2; bỏ trống = 0.5 mặc định), SUFFIX (giữ -v2 khi nối chuỗi -v2 cũ),
+#   LORA_R/LORA_ALPHA (chỉ khi train trắng; mode 7B trắng mặc định 64/128,
+#   3B trắng giữ 32/64 của config), KL_COEF (bỏ trống = 0.5 cho cả 2 mode),
+#   SUFFIX (giữ -v2 khi nối chuỗi -v2 cũ),
 #   FORCE_START (đổi dataset giữa chừng: ép start, init vẫn lấy mốc mới nhất),
 #   DRY_RUN=1 (in kế hoạch, không train).
 # Xem tiến độ: tail -n 5 train-<run>.log (không tail -f).
@@ -154,8 +156,15 @@ if [ "$NEW_FLOW" = "1" ]; then
     END=$((START + COUNT)); STEP=$COUNT
 fi
 
-# Số epoch mỗi lát (mặc định 1; data nhỏ vd 1k mẫu thì EPOCHS=2-3 cho đủ step).
-EPOCHS="${EPOCHS:-1}"
+# Số epoch mỗi lát. MODE 7B KHÁC 3B: 7B mặc định 2 epoch/lát (cần nhiều step
+# hơn để fit cùng data — underfit đã thấy thực tế); 3B giữ 1.
+# Data nhỏ (vd 1k mẫu) thì tăng tay EPOCHS=2-3 cho đủ step. Ghi đè: EPOCHS=n.
+if [ -z "${EPOCHS:-}" ]; then
+    case "$(echo "$MODEL" | tr '[:upper:]' '[:lower:]')" in
+        *7b*) EPOCHS=2 ;;
+        *) EPOCHS=1 ;;
+    esac
+fi
 case "$EPOCHS" in
     ''|*[!0-9]*|0) echo "[ERR] EPOCHS phải là số nguyên > 0"; exit 1 ;;
 esac
@@ -185,8 +194,19 @@ if [ -z "${SUFFIX:-}" ]; then
 fi
 
 # LORA_* chỉ truyền khi train trắng (nối adapter cũ thì r/alpha lấy theo adapter cũ).
-# 7B underfit cùng hyperparams 3B (r=32/1 epoch) thì chain mới: LORA_R=64 LORA_ALPHA=128;
-# nối chain cũ (giữ r=32) thì EPOCHS=2 + KL_COEF=0.1-0.2 để học nhanh hơn.
+# MODE 7B KHÁC 3B: chain 7B train trắng mặc định R=64/alpha=128 (layer LLM 7B rộng
+# 3584 vs 2048 của 3B nên rank-32 tương đối nhỏ hơn; chữ viết tay rank cao → CER thấp
+# hơn). 3B trắng giữ R=32/alpha=64 của config. Nối chain cũ (giữ r cũ) thì tăng
+# EPOCHS + hạ KL_COEF (vd 0.2) để học nhanh hơn. KL giữ 0.5 cho cả 2 mode
+# (chưa có số chứng minh 7B cần KL khác 3B).
+if [ "${INIT_REV:-none}" = "none" ]; then
+    case "$(echo "$MODEL" | tr '[:upper:]' '[:lower:]')" in
+        *7b*)
+            LORA_R="${LORA_R:-64}"
+            LORA_ALPHA="${LORA_ALPHA:-128}"
+            ;;
+    esac
+fi
 LORA_FLAGS=""
 if [ -n "$LORA_R" ]; then
     LORA_FLAGS="$LORA_FLAGS --lora-r $LORA_R"
@@ -203,10 +223,16 @@ fi
 # DRY_RUN=1: chỉ in kế hoạch, không train (dùng để kiểm tra start/init/rev).
 run_stage() {
     local S="$1" COUNT="$2" STAGE_INIT="$3" HUB_REV="$4" RUN="$5" BG="$6"
+    # Rank/alpha chỉ có tác dụng khi train trắng; mốc nối tiếp lấy theo adapter cũ
+    # (train.py bỏ qua) nên không truyền để dry-run/log khỏi gây hiểu nhầm.
+    local STAGE_LORA_FLAGS=""
+    if [ "$STAGE_INIT" = "none" ]; then STAGE_LORA_FLAGS="$LORA_FLAGS"; fi
     if [ "${DRY_RUN:-0}" = "1" ]; then
         local prec="qlora-4bit"
         if [ -n "$PRECISION_FLAG" ]; then prec="bf16-lora"; fi
-        echo "[dry-run] model=$MODEL repo=$HUB_REPO start=$S count=$COUNT epochs=$EPOCHS init=$STAGE_INIT rev=$HUB_REV run=$RUN batch=$BATCH_SIZE accum=$GRAD_ACCUM precision=$prec"
+        local lora_show="theo-adapter-cu"
+        if [ "$STAGE_INIT" = "none" ]; then lora_show="${LORA_R:-32}/${LORA_ALPHA:-64}"; fi
+        echo "[dry-run] model=$MODEL repo=$HUB_REPO start=$S count=$COUNT epochs=$EPOCHS lora=$lora_show init=$STAGE_INIT rev=$HUB_REV run=$RUN batch=$BATCH_SIZE accum=$GRAD_ACCUM precision=$prec"
         return 0
     fi
     # Tự resume nếu mốc này đã có checkpoint local (chết giữa chừng).
@@ -227,7 +253,7 @@ run_stage() {
             --init-adapter "$STAGE_INIT" \
             --push --push-every-save --save-steps "$SAVE_STEPS" \
             --hub-repo "$HUB_REPO" --hub-revision "$HUB_REV" --run-name "$RUN" \
-            $EXTRA_FLAGS $LORA_FLAGS $KL_FLAGS \
+            $EXTRA_FLAGS $STAGE_LORA_FLAGS $KL_FLAGS \
             > "$LOG" 2>&1 &
         echo "Đang chạy ${RUN} (PID $!), log: ${LOG}"
     else
@@ -239,7 +265,7 @@ run_stage() {
             --init-adapter "$STAGE_INIT" \
             --push --push-every-save --save-steps "$SAVE_STEPS" \
             --hub-repo "$HUB_REPO" --hub-revision "$HUB_REV" --run-name "$RUN" \
-            $EXTRA_FLAGS $LORA_FLAGS $KL_FLAGS
+            $EXTRA_FLAGS $STAGE_LORA_FLAGS $KL_FLAGS
     fi
 }
 
