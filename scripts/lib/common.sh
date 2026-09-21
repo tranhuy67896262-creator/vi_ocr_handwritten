@@ -163,10 +163,14 @@ setup_gpu_env() {
     fi
     echo "Python: $("$PYTHON" --version 2>/dev/null || echo "khong xac dinh")"
 
-    # torch/torchvision bản CUDA (PyPI mặc định là bản CPU)
-    if ! "$PYTHON" -c "import torch, torchvision; assert torch.cuda.is_available()" 2>/dev/null; then
-        echo "Dang cai torch + torchvision ban CUDA..."
-        uv pip install --python "$PYTHON" torch torchvision --index-url https://download.pytorch.org/whl/cu128
+    # torch/torchvision bản CUDA, GHIM 2.9.1 (không lấy latest):
+    # - wheel flash-attn build sẵn chỉ khớp torch 2.8/2.9 (install_flash_attn_github),
+    # - torchao 0.16 + torch 2.9.1 là cặp tương thích python-API (pytorch/ao v0.17
+    #   notes: 0.16.0 + 2.10.0/2.9.1/2.8.0; torch 2.9.0 vỡ ScalingType).
+    # Latest (2.11+) vỡ cả hai. PyPI mặc định là bản CPU nên chỉ rõ cu128.
+    if ! "$PYTHON" -c "import torch, torchvision; assert torch.cuda.is_available(); assert torch.__version__.startswith('2.9.')" 2>/dev/null; then
+        echo "Dang cai torch 2.9.1 + torchvision 0.24.1 ban CUDA..."
+        uv pip install --python "$PYTHON" "torch==2.9.1" "torchvision==0.24.1" --index-url https://download.pytorch.org/whl/cu128
     fi
 
     # flash-attn best-effort (tăng tốc A100/H100, thiếu thì fallback sdpa).
