@@ -6,11 +6,51 @@ set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$ROOT"
+source "scripts/lib/common.sh"
 
-SMOKE_DIR="${SMOKE_DIR:-models/gguf-smoke}"
-FULL_DIR="${FULL_DIR:-models/gguf-20k}"
-SMOKE_MERGED_DIR="${SMOKE_MERGED_DIR:-models/qwen25vl-7b-vi-hwr-lora-smoke-merged}"
-FULL_MERGED_DIR="${FULL_MERGED_DIR:-models/qwen25vl-7b-vi-hwr-lora-50k-merged}"
+# Trả về đúng 1 thư mục khớp glob, hoặc rỗng (nhiều/không khớp -> để user chỉ tay).
+discover_one_dir() {
+    shopt -s nullglob
+    local matches=($1)
+    shopt -u nullglob
+    local dirs=()
+    local m
+    for m in ${matches[@]+"${matches[@]}"}; do
+        [[ -d "$m" ]] && dirs+=("$m")
+    done
+    if [[ ${#dirs[@]} -eq 1 ]]; then
+        echo "${dirs[0]}"
+    fi
+    return 0
+}
+
+# gguf-smoke-7b-lora -> qwen25vl-7b-vi-hwr-smoke-lora (khớp tên pipeline.sh đặt).
+# Trả về rỗng nếu thư mục không theo quy ước (caller dùng tên mặc định).
+derive_ollama_name() {
+    local base="${1#models/gguf-}" out=""
+    if [[ "$2" == "smoke" ]]; then
+        out="$(echo "$base" | sed -E 's/^smoke-([a-z0-9]+)-(.+)$/qwen25vl-\1-vi-hwr-smoke-\2/')"
+    else
+        out="$(echo "$base" | sed -E 's/^20k-([a-z0-9]+)-(.+)$/qwen25vl-\1-vi-hwr-20k-\2/')"
+    fi
+    case "$out" in
+        qwen25vl-*) echo "$out" ;;
+    esac
+    return 0
+}
+
+# Mặc định tự dò output của pipeline.sh; nhiều model cùng loại thì chỉ tay qua env
+# (vd SMOKE_DIR=models/gguf-smoke-3b-lora bash import_models_to_ollama.sh).
+SMOKE_DIR="${SMOKE_DIR:-$(discover_one_dir "models/gguf-smoke-*")}"
+FULL_DIR="${FULL_DIR:-$(discover_one_dir "models/gguf-20k-*")}"
+SMOKE_MERGED_DIR="${SMOKE_MERGED_DIR:-$(discover_one_dir "models/qwen25vl-*-smoke-merged")}"
+FULL_MERGED_DIR="${FULL_MERGED_DIR:-$(discover_one_dir "models/qwen25vl-*-20k-merged")}"
+if [[ -z "${SMOKE_NAME:-}" ]]; then
+    SMOKE_NAME="$(derive_ollama_name "$SMOKE_DIR" smoke)"
+fi
+if [[ -z "${FULL_NAME:-}" ]]; then
+    FULL_NAME="$(derive_ollama_name "$FULL_DIR" 20k)"
+fi
 SMOKE_NAME="${SMOKE_NAME:-qwen25vl-7b-vi-hwr-smoke}"
 FULL_NAME="${FULL_NAME:-qwen25vl-7b-vi-hwr-20k}"
 QUANT="${QUANT:-Q6_K}"
@@ -34,27 +74,7 @@ if [[ ! -f "scripts/ollama_create.sh" ]]; then
     exit 1
 fi
 
-if ! command -v ollama >/dev/null 2>&1; then
-    echo "[ERR] Chua cai Ollama CLI."
-    exit 1
-fi
-
-if ! ollama list >/dev/null 2>&1; then
-    if [[ "${OLLAMA_AUTO_START:-1}" != "1" ]]; then
-        echo "[ERR] Ollama server chua chay. Chay 'ollama serve' roi thu lai."
-        exit 1
-    fi
-    echo "Khoi dong Ollama server..."
-    ollama serve > /tmp/ollama-vi-ocr.log 2>&1 &
-    for _ in $(seq 1 30); do
-        sleep 1
-        ollama list >/dev/null 2>&1 && break
-    done
-    ollama list >/dev/null 2>&1 || {
-        echo "[ERR] Khong khoi dong duoc Ollama. Xem /tmp/ollama-vi-ocr.log"
-        exit 1
-    }
-fi
+ensure_ollama_serve
 
 import_one() {
     local model_name="$1"

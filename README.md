@@ -48,9 +48,10 @@ scripts/export_merged.py  # merge LoRA vào base
 scripts/export_gguf.sh    # convert GGUF (Linux/Colab)
 scripts/ui.py             # UI Gradio 5 tab (Fine-tune/OCR/Eval/Export/Settings)
 run_train.sh / run_train.bat  # wrapper setup + chạy (Linux / Windows)
-pipeline_smoke_10.sh      # train 10 ảnh + export + import/test Ollama
-pipeline_train_20k.sh     # train tối đa 5k mặc định, chỉ chạy sau smoke test thành công
-import_models_to_ollama.sh # import các GGUF đã export vào Ollama
+pipeline.sh               # pipeline end-to-end: train -> eval -> merge -> GGUF -> Ollama (mode smoke|train)
+scripts/stage_train.sh    # train staged: 1 lệnh duy nhất [token] <qwenvl-3b|qwenvl-7b> <repo> [count] [save]
+scripts/lib/common.sh     # lib dùng chung cho các script shell (setup GPU, token Hub, parse model, ollama serve)
+import_models_to_ollama.sh # import các GGUF đã export vào Ollama (tự dò thư mục output pipeline)
 ```
 
 ## Cài đặt
@@ -87,20 +88,48 @@ Hoặc bỏ qua token nếu đã upload sẵn `.env.dev` / dán token ở tab Se
 
 Script tự cài dependencies + kiểm tra GPU + đọc `HF_TOKEN` từ `.env.dev`. Mọi flag train truyền thẳng qua được: `./run_train.sh --train --epochs 2 --lr 1e-5`.
 
-**Pipeline kiểm tra đầy đủ cho 7B:** các script ở thư mục gốc được thiết kế cho `tranhuy67896262/Qwen2.5-VL-7B-Instruct-private` và sẽ dừng nếu thiếu adapter, GGUF, `mmproj`, Ollama hoặc output OCR.
+**Pipeline kiểm tra đầy đủ (3B/7B):** `pipeline.sh` chạy 5 bước train → eval → merge → GGUF → Ollama và sẽ dừng nếu thiếu adapter, GGUF, `mmproj`, Ollama hoặc output OCR.
 
 ```bash
 # A100 40GB: bắt đầu batch 2, có thể tăng lên 4 nếu còn VRAM
-BATCH_SIZE=2 bash pipeline_smoke_10.sh hf_xxxxx
+BATCH_SIZE=2 bash pipeline.sh smoke 7b hf_xxxxx
 
 # Chỉ chạy sau khi smoke test tạo marker thành công
-BATCH_SIZE=2 bash pipeline_train_20k.sh hf_xxxxx
+BATCH_SIZE=2 bash pipeline.sh train 7b hf_xxxxx
+# LoRA bf16 thay vì QLoRA: USE_4BIT=0 bash pipeline.sh train 7b hf_xxxxx
 
-# Import lại các model GGUF đã tạo (smoke và 20k nếu tồn tại)
+# Import lại các model GGUF đã tạo (smoke và train nếu tồn tại)
 bash import_models_to_ollama.sh
 ```
 
-Smoke pipeline thực hiện: train 10 ảnh → OCR bằng adapter HF → merge model → convert GGUF + `mmproj` → import Ollama → chạy OCR ảnh test. Pipeline 20k chỉ chạy khi smoke test thành công.
+Smoke pipeline thực hiện: train 10 ảnh → OCR bằng adapter HF → merge model → convert GGUF + `mmproj` → import Ollama → chạy OCR ảnh test. Pipeline train chỉ chạy khi smoke test thành công.
+
+## Train staged nhiều mốc (1 lệnh duy nhất, production)
+
+`scripts/stage_train.sh` train tiếp từng lát data mới, **tự dò tiến độ** từ nhánh `stage-*` trên Hub — mỗi lần chạy chỉ cần token + model + repo:
+
+```bash
+./scripts/stage_train.sh <hf_token> <qwenvl-3b|qwenvl-7b> <repo> [count=5000] [save_steps=50]
+```
+
+- `<repo>`: `owner/repo` (thiếu owner → lấy user của token). Token truyền tay được lưu `.env.dev`; thiếu/sai → script hỏi nhập, kiểm tra qua API Hub rồi tự lưu.
+- `start`/`init` tự dò: repo đã tới `stage-10k` → train tiếp từ mẫu 10000 với adapter `repo@stage-10k`; repo mới → train trắng từ 0, push nhánh `stage-5k`.
+- Mỗi lần chạy = 1 lát, chạy nền nohup, log `train-<run>.log` — xem bằng `tail -n 5`, không `tail -f`. Không chạy 2 train chung 1 GPU.
+- Batch/precision auto theo model (3B: batch 8 QLoRA; 7B: batch 4 bf16), ghi đè qua `BATCH_SIZE`/`GRAD_ACCUM`/`USE_4BIT`. `DRY_RUN=1` để xem kế hoạch (start/init/rev) mà không train.
+
+```bash
+# 3B QLoRA, lát 10k đầu trên A100 80GB (mặc định batch 8, eff 32):
+./scripts/stage_train.sh hf_xxx qwenvl-3b <owner>/repo 10k
+
+# Nhanh nhất (LoRA bf16 + batch 16, ~35-50GB VRAM):
+USE_4BIT=0 BATCH_SIZE=16 GRAD_ACCUM=2 ./scripts/stage_train.sh hf_xxx qwenvl-3b <owner>/repo 10k
+
+# Nối tiếp lát sau — không cần nhớ start, script tự thấy repo đã tới stage-10k:
+./scripts/stage_train.sh hf_xxx qwenvl-3b <owner>/repo
+
+# Kiểm tra trước khi chạy thật:
+DRY_RUN=1 ./scripts/stage_train.sh hf_xxx qwenvl-3b <owner>/repo
+```
 
 ## Quy trình chạy an toàn: bắt lỗi sớm (đúc kết từ vụ loss 0.0)
 
@@ -280,6 +309,7 @@ bash run_train.sh hf_xxx --train \
 - `--init-adapter <repo>@<revision>` nạp **trọng số** adapter cũ rồi train tiếp (reset LR/optimizer — khác `--resume` là giữ cả optimizer).
 - Base model phải **cùng họ** với adapter (3B adapter + 3B base).
 - Mỗi mốc dùng 1 nhánh riêng để không đè nhau; nhánh `main` để trống làm nơi đặt bản production cuối cùng.
+- Cách gọn hơn cho chuỗi dài: `scripts/stage_train.sh <token> <qwenvl-3b|qwenvl-7b> <repo> [count]` tự nối nhánh `stage-*` mới nhất (kèm `--auto-progress` + tự `--resume` checkpoint local), khỏi truyền `--init-adapter` tay — xem section "Train staged nhiều mốc".
 
 > Dataset mặc định: mirror private `tranhuy67896262/Viet-Handwriting-OCR-v2-local` (copy parquet gốc 5CD-AI v2: 59.247 train + 1.000 test; cần HF_TOKEN có quyền đọc). Đổi bằng `--dataset <owner>/<repo>` hoặc thư mục parquet local.
 
@@ -298,6 +328,15 @@ bash run_train.sh hf_xxx --train \
 ```
 
 `ATTN_IMPLEMENTATION="auto"` trong config (flash_attention_2 nếu import được, sdpa nếu không) nên không cần sửa code. Batch size cứ tăng dần tới khi gần đầy VRAM rồi lùi 1 nấc. `gradient_accumulation_steps=8`, nên batch 2 có effective batch 16 và batch 4 có effective batch 32.
+
+**A100 80GB + train staged (`scripts/stage_train.sh`, xem section trên):**
+| Model | Precision | Batch x Accum (eff) | VRAM ước tính |
+|---|---|---|---|
+| 3B | QLoRA 4-bit (mặc định) | 8 x 4 (32) | ~30-40GB |
+| 3B | LoRA bf16 (`USE_4BIT=0`) | 16 x 2 (32) | ~35-50GB, nhanh hơn ~10-20% |
+| 7B | LoRA bf16 | 4 x 4 (16) | ~50GB |
+
+Giữ nguyên effective batch khi đổi per-device batch (vd `8x4` ↔ `16x2`) để động lực train không đổi. OOM spike khi gặp batch toàn ảnh max-res → lùi 1 nấc batch hoặc giảm `--max-pixels`.
 
 ## Ghi chú quan trọng
 
