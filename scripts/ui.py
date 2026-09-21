@@ -21,12 +21,18 @@ MODEL_CHOICES = [
 
 
 def _adapter_for_model(model_name):
-    from configs.configs import _adapter_tag
-    return str(PROJECT_ROOT / "models" / f"qwen25vl-{_adapter_tag(model_name)}-vi-hwr-lora")
+    """Giá trị hiện sẵn trong ô Adapter: path local nếu đã có trọng số,
+    ngược lại repo id Hub (máy Colab mới không phải gõ tay)."""
+    from configs.configs import default_adapter_dir, default_hub_repo
+    local = default_adapter_dir(PROJECT_ROOT / "models", model_name or MODEL_CHOICES[0])
+    if (local / "adapter_config.json").is_file():
+        return str(local)
+    return default_hub_repo(model_name or MODEL_CHOICES[0])
 
 
 def sync_adapter(model_name, current):
-    """Đổi base model -> tự trỏ adapter về thư mục mặc định tương ứng.
+    """Đổi base model -> tự trỏ adapter về giá trị mặc định tương ứng
+    (path local nếu có weight, ngược lại repo id Hub).
     Giữ nguyên nếu user đã gõ path/repo id riêng."""
     cur = (current or "").strip()
     known = {_adapter_for_model(m) for m in MODEL_CHOICES}
@@ -739,7 +745,8 @@ def build_app():
             with gr.Row():
                 ocr_model = gr.Dropdown(choices=MODEL_CHOICES, value=cfg.MODEL_NAME,
                                         label="Base model", allow_custom_value=True)
-                adapter_in = gr.Textbox(value=str(cfg.ADAPTER_DIR), label="Adapter (đường dẫn hoặc owner/repo)")
+                adapter_in = gr.Textbox(value=_adapter_for_model(cfg.MODEL_NAME),
+                                          label="Adapter (đường dẫn hoặc owner/repo)")
             ocr_model.change(sync_adapter, inputs=[ocr_model, adapter_in], outputs=adapter_in)
             ocr_btn = gr.Button("🔍 OCR", variant="primary")
             ocr_out = gr.Textbox(label="Kết quả")
@@ -772,7 +779,7 @@ def build_app():
                     ],
                     value=100, label="Số mẫu test",
                 )
-                eval_adapter = gr.Textbox(value=str(cfg.ADAPTER_DIR), label="Adapter")
+                eval_adapter = gr.Textbox(value=_adapter_for_model(cfg.MODEL_NAME), label="Adapter")
                 eval_model = gr.Dropdown(choices=MODEL_CHOICES, value=cfg.MODEL_NAME,
                                          label="Base model", allow_custom_value=True)
             eval_rev = gr.Textbox(label="Revision adapter (tùy chọn)",
@@ -785,7 +792,7 @@ def build_app():
         with gr.Tab("Export"):
             gr.Markdown("1 nút duy nhất: merge adapter → convert GGUF → import vào Ollama "
                         "(Colab tự cài + chạy Ollama server nếu thiếu). Chỉ Linux/Colab.")
-            export_adapter = gr.Textbox(value=str(cfg.ADAPTER_DIR), label="Adapter")
+            export_adapter = gr.Textbox(value=_adapter_for_model(cfg.MODEL_NAME), label="Adapter")
             export_model = gr.Dropdown(choices=MODEL_CHOICES, value=cfg.MODEL_NAME,
                                        label="Base model", allow_custom_value=True)
             export_rev = gr.Textbox(label="Revision adapter (tùy chọn)",
@@ -817,7 +824,7 @@ def build_app():
             gr.Markdown("### 💾 Kiểm tra model/adapter đã tải về máy chưa (không tải thêm)")
             check_model = gr.Dropdown(choices=MODEL_CHOICES, value=cfg.MODEL_NAME,
                                       label="Base model", allow_custom_value=True)
-            check_adapter = gr.Textbox(value=str(cfg.ADAPTER_DIR), label="Adapter")
+            check_adapter = gr.Textbox(value=_adapter_for_model(cfg.MODEL_NAME), label="Adapter")
             check_btn = gr.Button("🔍 Kiểm tra", variant="secondary")
             check_msg = gr.Markdown()
             check_btn.click(check_model_ui, inputs=[check_model, check_adapter],

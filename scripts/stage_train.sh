@@ -25,7 +25,8 @@
 # Env: BATCH_SIZE (mặc định 8 cho cả 3b/7b), GRAD_ACCUM (=4), LR (=2e-5),
 #   USE_4BIT (auto = 0 bf16 --no-4bit; GPU nhỏ ép QLoRA bằng USE_4BIT=1), EPOCHS (=1),
 #   DATASET (mặc định mirror v2-local), HUB_REPO/INIT_REPO,
-#   LORA_R/LORA_ALPHA (chỉ khi train trắng), SUFFIX (giữ -v2 khi nối chuỗi -v2 cũ),
+#   LORA_R/LORA_ALPHA (chỉ khi train trắng), KL_COEF (hạ KL khi 7B underfit,
+#   vd 0.2; bỏ trống = 0.5 mặc định), SUFFIX (giữ -v2 khi nối chuỗi -v2 cũ),
 #   FORCE_START (đổi dataset giữa chừng: ép start, init vẫn lấy mốc mới nhất),
 #   DRY_RUN=1 (in kế hoạch, không train).
 # Xem tiến độ: tail -n 5 train-<run>.log (không tail -f).
@@ -184,12 +185,18 @@ if [ -z "${SUFFIX:-}" ]; then
 fi
 
 # LORA_* chỉ truyền khi train trắng (nối adapter cũ thì r/alpha lấy theo adapter cũ).
+# 7B underfit cùng hyperparams 3B (r=32/1 epoch) thì chain mới: LORA_R=64 LORA_ALPHA=128;
+# nối chain cũ (giữ r=32) thì EPOCHS=2 + KL_COEF=0.1-0.2 để học nhanh hơn.
 LORA_FLAGS=""
 if [ -n "$LORA_R" ]; then
     LORA_FLAGS="$LORA_FLAGS --lora-r $LORA_R"
 fi
 if [ -n "$LORA_ALPHA" ]; then
     LORA_FLAGS="$LORA_FLAGS --lora-alpha $LORA_ALPHA"
+fi
+KL_FLAGS=""
+if [ -n "${KL_COEF:-}" ]; then
+    KL_FLAGS="--kl-coef $KL_COEF"
 fi
 
 # Chạy 1 mốc: $1=start $2=count $3=init_adapter $4=hub_rev $5=run $6=background(0/1).
@@ -220,7 +227,7 @@ run_stage() {
             --init-adapter "$STAGE_INIT" \
             --push --push-every-save --save-steps "$SAVE_STEPS" \
             --hub-repo "$HUB_REPO" --hub-revision "$HUB_REV" --run-name "$RUN" \
-            $EXTRA_FLAGS $LORA_FLAGS \
+            $EXTRA_FLAGS $LORA_FLAGS $KL_FLAGS \
             > "$LOG" 2>&1 &
         echo "Đang chạy ${RUN} (PID $!), log: ${LOG}"
     else
@@ -232,7 +239,7 @@ run_stage() {
             --init-adapter "$STAGE_INIT" \
             --push --push-every-save --save-steps "$SAVE_STEPS" \
             --hub-repo "$HUB_REPO" --hub-revision "$HUB_REV" --run-name "$RUN" \
-            $EXTRA_FLAGS $LORA_FLAGS
+            $EXTRA_FLAGS $LORA_FLAGS $KL_FLAGS
     fi
 }
 

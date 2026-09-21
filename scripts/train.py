@@ -47,6 +47,9 @@ def main():
                         help="Lưu checkpoint mỗi N steps (mặc định: từ config; run dài nên để ~100)")
     parser.add_argument("--no-kl", action="store_true",
                         help="Tắt KL-regularization (chống mất kiến thức) để tiết kiệm VRAM")
+    parser.add_argument("--kl-coef", type=float, default=None,
+                        help="Hệ số KL (mặc định 0.5 từ config). Model lớn underfit "
+                             "(vd 7B thua 3B cùng data) thì hạ về 0.1-0.2 để học nhanh hơn")
     parser.add_argument("--no-4bit", action="store_true",
                         help="Train LoRA full-precision bf16 (bỏ 4-bit QLoRA; chất lượng nhỉnh hơn nhưng tốn VRAM)")
     parser.add_argument("--push", action="store_true", help="Push adapter lên Hugging Face Hub")
@@ -96,6 +99,10 @@ def main():
         config.LORA_ALPHA = args.lora_alpha
     if args.no_kl:
         config.KL_REGULARIZATION = False
+    if args.kl_coef is not None:
+        if args.kl_coef < 0:
+            parser.error("--kl-coef phải >= 0 (0 = chỉ tính CE, tắt hẳn thì dùng --no-kl).")
+        config.KL_COEFFICIENT = args.kl_coef
     if args.no_4bit:
         config.USE_4BIT = False
     if args.hub_repo:
@@ -131,6 +138,7 @@ def main():
         model = build_lora_model(
             config, model, init_adapter=init_adapter, adapter_revision=adapter_revision
         )
+        _print_actual_lora_rank(model, config)
     except Exception as exc:
         log_and_exit(exc, stage="MODEL", extra_hint="Kiểm tra kết nối mạng, HF_TOKEN, tên model.")
 
@@ -143,6 +151,19 @@ def main():
               start_samples=args.start_samples)
     except Exception as exc:
         log_and_exit(exc, stage="TRAIN")
+
+
+def _print_actual_lora_rank(model, config):
+    """In R/alpha THỰC của adapter đang train.
+
+    Nối chain cũ (``--init-adapter``) thì r/alpha lấy theo adapter cũ,
+    ``--lora-r``/config bị bỏ qua — in ra để log không gây hiểu nhầm.
+    """
+    try:
+        adapter_cfg = next(iter(model.peft_config.values()))
+        print(f"Adapter thực: R={adapter_cfg.r} alpha={adapter_cfg.lora_alpha}")
+    except (AttributeError, StopIteration):
+        print(f"Adapter theo config: R={config.LORA_R} alpha={config.LORA_ALPHA}")
 
 
 def _split_adapter_ref(init_adapter, adapter_revision):

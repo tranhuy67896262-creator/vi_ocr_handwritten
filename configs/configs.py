@@ -22,6 +22,29 @@ def adapter_dir(models_dir, model_name, use_4bit=True):
     return Path(models_dir) / f"qwen25vl-{_adapter_tag(model_name)}-vi-hwr-{precision}"
 
 
+def default_adapter_dir(models_dir, model_name):
+    """Thư mục adapter mặc định cho eval/export/UI: ưu tiên bản đã có trọng số.
+
+    Train staged mặc định bf16 (``...-lora-bf16``) nhưng flow QLoRA cũ dùng
+    ``...-lora`` — trỏ nhầm là test sai adapter (vd 7B đọc kém oan).
+    Tiêu chí "đã có": chứa ``adapter_config.json``.
+    """
+    bf16 = adapter_dir(models_dir, model_name, False)
+    if (bf16 / "adapter_config.json").is_file():
+        return bf16
+    return adapter_dir(models_dir, model_name, True)
+
+
+def default_hub_repo(model_name):
+    """Repo adapter Hub mặc định theo model (khớp default_hub_for_model trong common.sh).
+
+    UI hiện thẳng repo id này khi máy chưa có weight local — user không phải gõ tay.
+    """
+    name = model_name.rsplit("/", 1)[-1].lower()
+    size = "3b" if "3b" in name else "7b"
+    return f"tranhuy67896262/qwen25vl-{size}-vi-hwr-lora"
+
+
 class Configs:
     """Cấu hình cho project Vi-OCR-Handwritten (Qwen2.5-VL + LoRA/QLoRA)"""
 
@@ -114,6 +137,9 @@ class Configs:
         self.DATA_DIR.mkdir(exist_ok=True)
         self.MODELS_DIR.mkdir(exist_ok=True)
         self.NOTEBOOKS_DIR.mkdir(exist_ok=True)
+        # Adapter mặc định ưu tiên bản đã có trọng số (bf16 staged trước,
+        # QLoRA sau) — eval/export không truyền --adapter vẫn trúng.
+        self.ADAPTER_DIR = default_adapter_dir(self.MODELS_DIR, self.MODEL_NAME)
         self.ADAPTER_DIR.mkdir(exist_ok=True)
         # Đọc token fresh mỗi lần khởi tạo (ưu tiên env, fallback .env.dev):
         # class attribute HF_TOKEN chỉ tính 1 lần lúc import — token lưu giữa

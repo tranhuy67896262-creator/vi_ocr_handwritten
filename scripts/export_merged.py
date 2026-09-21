@@ -10,7 +10,7 @@ import torch
 from peft import PeftModel
 from transformers import Qwen2_5_VLForConditionalGeneration
 
-from configs.configs import Configs, _adapter_tag
+from configs.configs import Configs, default_adapter_dir
 from src.modeling.load import load_processor, resolve_attn_implementation
 from src.utils.logging import log_and_exit, setup_file_logging
 
@@ -34,7 +34,7 @@ def main():
     setup_file_logging(config.MODELS_DIR / "export.log")
     if args.model:
         config.MODEL_NAME = args.model
-        config.ADAPTER_DIR = config.MODELS_DIR / f"qwen25vl-{_adapter_tag(args.model)}-vi-hwr-lora"
+        config.ADAPTER_DIR = default_adapter_dir(config.MODELS_DIR, args.model)
     adapter = args.adapter or str(config.ADAPTER_DIR)
     out = Path(args.output) if args.output else config.MODELS_DIR / f"{config.ADAPTER_DIR.name}-merged"
 

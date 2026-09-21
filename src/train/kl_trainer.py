@@ -31,6 +31,10 @@ class KLLoRATrainer(Trainer):
     def __init__(self, *args, kl_coef=0.5, **kwargs):
         super().__init__(*args, **kwargs)
         self.kl_coef = kl_coef
+        # Giá trị CE/KL của batch cuối — `log()` đẩy vào log_history để so run
+        # (vd 3B vs 7B) bằng số thật thay vì suy diễn.
+        self.last_ce = None
+        self.last_kl = None
 
     def compute_loss(self, model, inputs, return_outputs=False, num_items_in_batch=None):
         labels = inputs.pop("labels")
@@ -50,4 +54,13 @@ class KLLoRATrainer(Trainer):
             kl_loss = _kl_divergence(logits, ref_outputs.logits, mask)
 
         loss = ce_loss + self.kl_coef * kl_loss
+        self.last_ce = float(ce_loss.detach())
+        self.last_kl = float(kl_loss.detach())
         return (loss, outputs) if return_outputs else loss
+
+    def log(self, logs, *args, **kwargs):
+        """Chèn ce_loss/kl_loss riêng vào log_history (Trainer ghi sẵn loss tổng + grad_norm)."""
+        if self.last_ce is not None:
+            logs["ce_loss"] = self.last_ce
+            logs["kl_loss"] = self.last_kl
+        super().log(logs, *args, **kwargs)

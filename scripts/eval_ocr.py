@@ -10,7 +10,7 @@ from datasets import load_dataset
 from jiwer import cer, wer
 from PIL import Image
 
-from configs.configs import Configs, _adapter_tag
+from configs.configs import Configs, default_adapter_dir
 from src.datasets.dataset import detect_columns
 from src.infer.predict import load_ocr_model, predict_image
 from src.storage.run_store import RunStore
@@ -42,7 +42,7 @@ def main():
     setup_file_logging(config.MODELS_DIR / "eval.log")
     if args.model:
         config.MODEL_NAME = args.model
-        config.ADAPTER_DIR = config.MODELS_DIR / f"qwen25vl-{_adapter_tag(args.model)}-vi-hwr-lora"
+        config.ADAPTER_DIR = default_adapter_dir(config.MODELS_DIR, args.model)
     if args.dataset:
         config.DATASET_NAME = args.dataset
     adapter_dir = None if args.no_adapter else (args.adapter or str(config.ADAPTER_DIR))
