@@ -40,6 +40,13 @@ Fine-tune **Qwen2.5-VL** cho chữ viết tay tiếng Việt. Mục tiêu thiế
 - `python -m scripts.labeling merge` gộp HF (đã áp override) + ảnh cá nhân → `data/combined/` (`DatasetDict`); local xếp TRƯỚC để subset nhỏ vẫn gồm data cá nhân; lỗi schema (thiếu cột, không phải Image, split lạ, cột ghép lệch) báo rõ. `merge --dry-run` chỉ kiểm tra. `run_train.sh --merge` tự gộp rồi train `--dataset data/combined` (ngầm bật `--train`); `run_train.bat --merge` tương tự. `pipeline_smoke_10.sh`/`pipeline_train_20k.sh` mặc định `MERGE=1` và tự cộng số mẫu local vào `--max-samples` (smoke = 10 repo + toàn bộ assets); tắt bằng `MERGE=0`. `USE_4BIT=0` (hoặc 2 wrapper `pipeline_smoke_10_lora.sh`/`pipeline_train_20k_lora.sh`) chạy LoRA bf16; artifact tách theo suffix `-lora`/`-lora-bf16`.
 - `src/datasets/dataset.py:load_dataset_with_fallback` nhận cả thư mục `save_to_disk` (local) lẫn tên dataset HF. UI tách `can_edit_text`/`can_edit_split`/`can_delete`: local sửa đủ, HF chỉ sửa text (split là khóa `DatasetDict`, giữ nguyên).
 
+## Dataset mirror private (token owner đọc được cả 3)
+
+- Chuỗi chính: `tranhuy67896262/Viet-Handwriting-OCR-v2-local` (Kalapa địa chỉ: 59.247 train + 1.000 test) — default `DATASET_NAME`/env `DATASET`.
+- Essay bổ sung (văn xuôi, khác phân bố): `tranhuy67896262/vietnamese-ocr-dataset-line-local` (7.03k dòng-ngắn train + 201 test, cột image+content) và `tranhuy67896262/vietnamese-ocr-dataset-crop-card` (1.11k đoạn văn train + 31 test). Mirror từ manhha2502/HenryBui (public) — card README mỗi repo ghi nguồn + cảnh báo trùng.
+- 2 bộ essay TRÙNG nội dung gốc (cùng xấp ảnh: line cắt từng dòng vs crop đoạn văn) — train cả 2 được nhưng đừng cộng số liệu như nguồn độc lập, đừng cross-eval lẫn nhau (rò rỉ).
+- Train essay: adapter repo RIÊNG (start suy từ nhánh stage của repo nên chung repo với chuỗi khác sẽ lệch offset); thứ tự line → đoạn (dễ → khó); bộ ≤2k mẫu thì `EPOCHS=2-3`; đổi dataset trên cùng repo thì `FORCE_START=0` (+ `SUFFIX=-x` nếu sợ trùng tên nhánh stage).
+
 ## Quirk môi trường
 
 - Python 3.13 / Windows: train thật chạy **WSL2/GPU cloud**. 3B full-precision (bf16, không QLoRA vì `bitsandbytes` chưa có trên Windows) chiếm ~14 GB — GPU tiểu dùng 14.56 GB (như T4 16GB consumer) **sẽ OOM** nếu để KL regularization bật. `train.py` tự set `PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True` (chống fragmentation, không tăng capacity). Chạy smoke test nhanh trên Windows được: `python scripts/train.py --max-samples 100 --no-kl --batch-size 1 --max-seq-len 512`. 7B cần ~16GB+; export merged cần gấp ~2x.

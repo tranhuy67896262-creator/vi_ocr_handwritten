@@ -137,6 +137,26 @@ USE_4BIT=0 BATCH_SIZE=16 GRAD_ACCUM=2 ./scripts/stage_train.sh hf_xxx qwenvl-3b 
 DRY_RUN=1 ./scripts/stage_train.sh hf_xxx qwenvl-3b <owner>/repo
 ```
 
+**Train thêm 2 bộ essay** (văn xuôi, khác phân bố với chuỗi địa chỉ — mirror private từ manhha2502/HenryBui):
+
+| Dataset | Train / Test | Dạng |
+|---|---|---|
+| `tranhuy67896262/vietnamese-ocr-dataset-line-local` | 7.03k / 201 | từng dòng ngắn (2-158 ký tự) |
+| `tranhuy67896262/vietnamese-ocr-dataset-crop-card` | 1.11k / 31 | đoạn văn (20-715 ký tự) |
+
+```bash
+# Adapter riêng cho essay, thứ tự dễ -> khó (dòng trước, đoạn sau):
+DATASET=tranhuy67896262/vietnamese-ocr-dataset-line-local \
+  ./scripts/stage_train.sh hf_xxx qwenvl-3b <owner>/qwen25vl-3b-vi-hwr-essay
+# (chạy 2 lần = hết 7k: 0->5k rồi tự nối 5k->7k)
+
+# Tiếp bộ đoạn văn trên cùng adapter (ép start về 0, giữ weight mới nhất, 2 epoch vì chỉ 1,1k mẫu):
+DATASET=tranhuy67896262/vietnamese-ocr-dataset-crop-card FORCE_START=0 EPOCHS=2 \
+  ./scripts/stage_train.sh hf_xxx qwenvl-3b <owner>/qwen25vl-3b-vi-hwr-essay
+```
+
+> ⚠️ 2 bộ essay **trùng nội dung gốc** (cùng xấp ảnh, khác cách cắt) — đừng cộng số liệu như 2 nguồn độc lập, đừng cross-eval lẫn nhau. Eval essay xong nhớ eval regression trên test địa chỉ (CER không tăng mới đạt).
+
 **Test + đưa mốc staged ra Ollama** (luồng 2 áp cho adapter staged — eval/export đúng revision):
 
 ```bash
@@ -331,7 +351,7 @@ bash run_train.sh hf_xxx --train \
 - Mỗi mốc dùng 1 nhánh riêng để không đè nhau; nhánh `main` để trống làm nơi đặt bản production cuối cùng.
 - Cách gọn hơn cho chuỗi dài: `scripts/stage_train.sh <token> <qwenvl-3b|qwenvl-7b> <repo> [count]` tự nối nhánh `stage-*` mới nhất (kèm `--auto-progress` + tự `--resume` checkpoint local), khỏi truyền `--init-adapter` tay — xem section "Train staged nhiều mốc".
 
-> Dataset mặc định: mirror private `tranhuy67896262/Viet-Handwriting-OCR-v2-local` (copy parquet gốc 5CD-AI v2: 59.247 train + 1.000 test; cần HF_TOKEN có quyền đọc). Đổi bằng `--dataset <owner>/<repo>` hoặc thư mục parquet local.
+> Dataset mặc định: mirror private `tranhuy67896262/Viet-Handwriting-OCR-v2-local` (copy parquet gốc 5CD-AI v2: 59.247 train + 1.000 test; cần HF_TOKEN có quyền đọc). Đổi bằng `--dataset <owner>/<repo>` hoặc thư mục parquet local. 2 mirror essay bổ sung (`vietnamese-ocr-dataset-line-local`, `vietnamese-ocr-dataset-crop-card`) — xem section "Train thêm 2 bộ essay".
 
 ## Chạy trên A100 / H100 (Colab Pro)
 

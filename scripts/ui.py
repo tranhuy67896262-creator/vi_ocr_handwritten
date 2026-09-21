@@ -64,6 +64,12 @@ def _run(cmd, log="", cwd=None, env=None):
 
 STAGE_MODELS = ["qwenvl-3b", "qwenvl-7b"]
 
+STAGE_DATASETS = [
+    "tranhuy67896262/Viet-Handwriting-OCR-v2-local",
+    "tranhuy67896262/vietnamese-ocr-dataset-line-local",
+    "tranhuy67896262/vietnamese-ocr-dataset-crop-card",
+]
+
 # Batch preset theo model: (USE_4BIT, BATCH_SIZE, GRAD_ACCUM); None = để script tự chọn.
 BATCH_PRESETS = {
     "auto": {},
@@ -164,7 +170,23 @@ def _stage_env(model, preset):
     return {"USE_4BIT": use_4bit, "BATCH_SIZE": batch, "GRAD_ACCUM": accum}
 
 
-def stage_dryrun_ui(repo, model, count, save_steps, preset):
+def _stage_extra_env(dataset, force_start, epochs):
+    """Env thêm cho stage_train.sh: đổi dataset / ép start / số epoch mỗi lát."""
+    env = {}
+    if dataset and dataset.strip():
+        env["DATASET"] = dataset.strip()
+    if force_start is not None and str(force_start).strip() != "":
+        env["FORCE_START"] = str(force_start).strip()
+    try:
+        ep = int(epochs) if epochs is not None else 1
+    except (TypeError, ValueError):
+        ep = 1
+    if ep != 1:
+        env["EPOCHS"] = str(ep)
+    return env
+
+
+def stage_dryrun_ui(repo, model, count, save_steps, preset, dataset, force_start, epochs):
     """Chạy stage_train.sh với DRY_RUN=1: xem kế hoạch start/init/rev, không train."""
     repo_full, warn = _resolve_hub_repo(repo)
     if not repo_full or "/" not in repo_full:
@@ -176,12 +198,13 @@ def stage_dryrun_ui(repo, model, count, save_steps, preset):
            (count or "5000").strip(), str(int(save_steps or 50))]
     env = {"DRY_RUN": "1"}
     env.update(_stage_env(model, preset))
+    env.update(_stage_extra_env(dataset, force_start, epochs))
     if warn:
         yield warn + "\n"
     yield from _run(cmd, "> " + " ".join(cmd) + "\n", env=env)
 
 
-def stage_train_ui(repo, model, count, save_steps, preset):
+def stage_train_ui(repo, model, count, save_steps, preset, dataset, force_start, epochs):
     """Chạy stage_train.sh thật: 1 lát, nền nohup, log vào train-<run>.log."""
     repo_full, warn = _resolve_hub_repo(repo)
     if not repo_full or "/" not in repo_full:
@@ -191,9 +214,11 @@ def stage_train_ui(repo, model, count, save_steps, preset):
     cmd = ["bash", str(SCRIPT / "stage_train.sh"),
            (model or "qwenvl-3b").strip(), repo_full,
            (count or "5000").strip(), str(int(save_steps or 50))]
+    env = _stage_env(model, preset)
+    env.update(_stage_extra_env(dataset, force_start, epochs))
     if warn:
         yield warn + "\n"
-    yield from _run(cmd, "> " + " ".join(cmd) + "\n", env=_stage_env(model, preset))
+    yield from _run(cmd, "> " + " ".join(cmd) + "\n", env=env)
     # Train chạy nền xong (hoặc đứt) -> xóa cache để OCR sau load adapter mới nhất.
     _OCR_CACHE.clear()
     yield ("Xem tiến độ bằng `tail -n 5 train-<run>.log` (không `tail -f`). "
@@ -637,6 +662,27 @@ def build_app():
                     label="Chế độ batch",
                 )
             with gr.Row():
+                stage_dataset = gr.Dropdown(
+                    choices=STAGE_DATASETS,
+                    value=STAGE_DATASETS[0], label="Dataset train",
+                    allow_custom_value=True,
+                )
+            with gr.Accordion("Nâng cao: đổi dataset giữa chừng / data nhỏ", open=False):
+                gr.Markdown(
+                    "Đổi dataset trên cùng adapter (vd train xong bộ line, chuyển sang bộ "
+                    "đoạn văn): nhập `0` vào ô ép start — init vẫn lấy weight mốc mới nhất. "
+                    "Bộ ≤2k mẫu thì tăng epoch lên 2-3 cho đủ step."
+                )
+                with gr.Row():
+                    stage_force = gr.Textbox(
+                        label="Ép start (FORCE_START)",
+                        placeholder="trống = tự dò từ Hub; 0 = về đầu dataset mới",
+                    )
+                    stage_epochs = gr.Number(
+                        value=1, label="Epoch mỗi lát (EPOCHS)",
+                        precision=0, minimum=1,
+                    )
+            with gr.Row():
                 progress_btn = gr.Button("🔍 Kiểm tra repo tới đâu", variant="secondary")
                 dry_btn = gr.Button("📋 Xem kế hoạch (không train)", variant="secondary")
                 stage_btn = gr.Button("▶ Fine-tune tiếp 1 lát", variant="primary")
@@ -649,12 +695,14 @@ def build_app():
             )
             dry_btn.click(
                 stage_dryrun_ui,
-                inputs=[stage_repo, stage_model, stage_count, stage_save, stage_preset],
+                inputs=[stage_repo, stage_model, stage_count, stage_save, stage_preset,
+                        stage_dataset, stage_force, stage_epochs],
                 outputs=train_log,
             )
             stage_btn.click(
                 stage_train_ui,
-                inputs=[stage_repo, stage_model, stage_count, stage_save, stage_preset],
+                inputs=[stage_repo, stage_model, stage_count, stage_save, stage_preset,
+                        stage_dataset, stage_force, stage_epochs],
                 outputs=train_log,
             )
 

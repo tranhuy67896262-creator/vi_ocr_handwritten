@@ -23,9 +23,11 @@
 #     BATCH_SIZE=8 GRAD_ACCUM=4 ./scripts/stage_train.sh <token> qwenvl-3b <repo> 10k
 #
 # Env: BATCH_SIZE (mặc định 8 cho 3b, 4 cho 7b), GRAD_ACCUM (=4), LR (=2e-5),
-#   USE_4BIT (auto: 3b -> 1 QLoRA, còn lại -> 0 bf16 --no-4bit),
-#   HUB_REPO/INIT_REPO, DATASET, LORA_R/LORA_ALPHA (chỉ khi train trắng),
-#   SUFFIX (giữ -v2 xuyên suốt khi nối chuỗi -v2 cũ).
+#   USE_4BIT (auto: 3b -> 1 QLoRA, còn lại -> 0 bf16 --no-4bit), EPOCHS (=1),
+#   DATASET (mặc định mirror v2-local), HUB_REPO/INIT_REPO,
+#   LORA_R/LORA_ALPHA (chỉ khi train trắng), SUFFIX (giữ -v2 khi nối chuỗi -v2 cũ),
+#   FORCE_START (đổi dataset giữa chừng: ép start, init vẫn lấy mốc mới nhất),
+#   DRY_RUN=1 (in kế hoạch, không train).
 # Xem tiến độ: tail -n 5 train-<run>.log (không tail -f).
 set -euo pipefail
 
@@ -144,8 +146,23 @@ if [ "$NEW_FLOW" = "1" ]; then
             START=$(( ${PROG%% *} * 1000 )); INIT_REV="${PROG#* }"
             echo "Repo đã tới $INIT_REV -> train tiếp $COUNT mẫu từ $START." ;;
     esac
+    # Đổi dataset giữa chừng (vd train xong bộ line, chuyển sang bộ đoạn văn trên
+    # cùng 1 adapter): ép START về đầu dataset mới, INIT vẫn lấy weight mốc mới nhất.
+    if [ -n "${FORCE_START:-}" ]; then
+        START=$(to_samples "$FORCE_START")
+        case "$START" in
+            ''|*[!0-9]*) echo "[ERR] FORCE_START phải là số mẫu (hỗ trợ k): $FORCE_START"; exit 1 ;;
+        esac
+        echo "FORCE_START=$START (bỏ qua start tự dò; init giữ $INIT_REV)."
+    fi
     END=$((START + COUNT)); STEP=$COUNT
 fi
+
+# Số epoch mỗi lát (mặc định 1; data nhỏ vd 1k mẫu thì EPOCHS=2-3 cho đủ step).
+EPOCHS="${EPOCHS:-1}"
+case "$EPOCHS" in
+    ''|*[!0-9]*|0) echo "[ERR] EPOCHS phải là số nguyên > 0"; exit 1 ;;
+esac
 
 if [ "${DRY_RUN:-0}" = "1" ]; then
     echo "[dry-run] bỏ qua setup_gpu_env + train.py thật."
@@ -187,7 +204,7 @@ run_stage() {
     if [ "${DRY_RUN:-0}" = "1" ]; then
         local prec="qlora-4bit"
         if [ -n "$PRECISION_FLAG" ]; then prec="bf16-lora"; fi
-        echo "[dry-run] model=$MODEL repo=$HUB_REPO start=$S count=$COUNT init=$STAGE_INIT rev=$HUB_REV run=$RUN batch=$BATCH_SIZE accum=$GRAD_ACCUM precision=$prec"
+        echo "[dry-run] model=$MODEL repo=$HUB_REPO start=$S count=$COUNT epochs=$EPOCHS init=$STAGE_INIT rev=$HUB_REV run=$RUN batch=$BATCH_SIZE accum=$GRAD_ACCUM precision=$prec"
         return 0
     fi
     # Tự resume nếu mốc này đã có checkpoint local (chết giữa chừng).
@@ -204,7 +221,7 @@ run_stage() {
         nohup "$PYTHON" scripts/train.py \
             --dataset "$DATASET" --model "$MODEL" \
             --start-samples "$S" --max-samples "$COUNT" $PRECISION_FLAG --batch-size "$BATCH_SIZE" \
-            --gradient-accumulation-steps "$GRAD_ACCUM" --lr "$LR" --epochs 1 \
+            --gradient-accumulation-steps "$GRAD_ACCUM" --lr "$LR" --epochs "$EPOCHS" \
             --init-adapter "$STAGE_INIT" \
             --push --push-every-save --save-steps "$SAVE_STEPS" \
             --hub-repo "$HUB_REPO" --hub-revision "$HUB_REV" --run-name "$RUN" \
@@ -216,7 +233,7 @@ run_stage() {
         "$PYTHON" scripts/train.py \
             --dataset "$DATASET" --model "$MODEL" \
             --start-samples "$S" --max-samples "$COUNT" $PRECISION_FLAG --batch-size "$BATCH_SIZE" \
-            --gradient-accumulation-steps "$GRAD_ACCUM" --lr "$LR" --epochs 1 \
+            --gradient-accumulation-steps "$GRAD_ACCUM" --lr "$LR" --epochs "$EPOCHS" \
             --init-adapter "$STAGE_INIT" \
             --push --push-every-save --save-steps "$SAVE_STEPS" \
             --hub-repo "$HUB_REPO" --hub-revision "$HUB_REV" --run-name "$RUN" \
