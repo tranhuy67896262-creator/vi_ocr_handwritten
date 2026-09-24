@@ -242,12 +242,29 @@ def train(config, model, processor, train_ds, eval_ds=None, push=False, hub_repo
     return config.ADAPTER_DIR
 
 
+def _actual_lora_rank(config):
+    """Rank/alpha THẬT của adapter — đọc adapter_config.json vừa lưu.
+
+    Cần vì nối tiếp (`--init-adapter`) train theo rank của adapter cũ, còn
+    ``config.LORA_R`` vẫn là default 32/64 -> metadata ghi sai làm hỏng lineage
+    (đã thấy: stage-10k-v2 ghi r=32 nhưng adapter thật r=64).
+    """
+    try:
+        cfg = json.loads(
+            (config.ADAPTER_DIR / "adapter_config.json").read_text(encoding="utf-8"))
+        return int(cfg.get("r", config.LORA_R)), float(
+            cfg.get("lora_alpha", config.LORA_ALPHA))
+    except (OSError, ValueError, TypeError):
+        return config.LORA_R, config.LORA_ALPHA
+
+
 def _save_training_metadata(config, train_ds, eval_ds, trainer, use_4bit,
                             run_name=None, init_adapter=None, hub_revision=None):
     """Ghi lại số liệu training (đã train bao nhiêu data, cấu hình gì) vào JSON."""
     train_samples = len(train_ds) if train_ds is not None else 0
     eval_samples = len(eval_ds) if eval_ds is not None else 0
     global_step = getattr(getattr(trainer, "state", None), "global_step", 0)
+    lora_r, lora_alpha = _actual_lora_rank(config)
 
     metadata = {
         "model": config.MODEL_NAME,
@@ -262,8 +279,8 @@ def _save_training_metadata(config, train_ds, eval_ds, trainer, use_4bit,
         "learning_rate": config.LEARNING_RATE,
         "lr_scheduler": config.LR_SCHEDULER,
         "max_seq_len": config.MAX_SEQ_LEN,
-        "lora_r": config.LORA_R,
-        "lora_alpha": config.LORA_ALPHA,
+        "lora_r": lora_r,
+        "lora_alpha": lora_alpha,
         "lora_dropout": config.LORA_DROPOUT,
         "use_4bit": use_4bit,
         "seed": config.SEED,
@@ -289,12 +306,13 @@ def _append_log_summary(config, log_path, train_ds, eval_ds, trainer):
     train_samples = len(train_ds) if train_ds is not None else 0
     eval_samples = len(eval_ds) if eval_ds is not None else 0
     global_step = getattr(getattr(trainer, "state", None), "global_step", 0)
+    lora_r, lora_alpha = _actual_lora_rank(config)
 
     line = (
         f"[{datetime.now().isoformat(timespec='seconds')}] "
         f"train={train_samples} eval={eval_samples} steps={global_step} "
         f"epochs={config.NUM_EPOCHS} lr={config.LEARNING_RATE} "
-        f"lora_r={config.LORA_R} lora_alpha={config.LORA_ALPHA} "
+        f"lora_r={lora_r} lora_alpha={lora_alpha} "
         f"dataset={config.DATASET_NAME} model={config.MODEL_NAME} "
         f"adapter={config.ADAPTER_DIR}\n"
     )

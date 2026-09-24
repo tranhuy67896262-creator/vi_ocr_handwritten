@@ -28,7 +28,7 @@ class KLLoRATrainer(Trainer):
     Không cần copy model gốc thứ 2 nên không tốn thêm VRAM.
     """
 
-    def __init__(self, *args, kl_coef=0.5, **kwargs):
+    def __init__(self, *args, kl_coef=0.1, **kwargs):
         super().__init__(*args, **kwargs)
         self.kl_coef = kl_coef
         # Giá trị CE/KL của batch cuối — `log()` đẩy vào log_history để so run

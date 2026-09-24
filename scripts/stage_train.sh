@@ -27,7 +27,7 @@
 #   EPOCHS (mặc định theo mode: 3B=1, 7B=2),
 #   DATASET (mặc định mirror v2-local), HUB_REPO/INIT_REPO,
 #   LORA_R/LORA_ALPHA (chỉ khi train trắng; mode 7B trắng mặc định 64/128,
-#   3B trắng giữ 32/64 của config), KL_COEF (bỏ trống = 0.5 cho cả 2 mode),
+#   3B trắng giữ 32/64 của config), KL_COEF (bỏ trống = 0.1 từ config),
 #   SUFFIX (giữ -v2 khi nối chuỗi -v2 cũ),
 #   FORCE_START (đổi dataset giữa chừng: ép start, init vẫn lấy mốc mới nhất),
 #   DRY_RUN=1 (in kế hoạch, không train).
@@ -197,7 +197,8 @@ fi
 # MODE 7B KHÁC 3B: chain 7B train trắng mặc định R=64/alpha=128 (layer LLM 7B rộng
 # 3584 vs 2048 của 3B nên rank-32 tương đối nhỏ hơn; chữ viết tay rank cao → CER thấp
 # hơn). 3B trắng giữ R=32/alpha=64 của config. Nối chain cũ (giữ r cũ) thì tăng
-# EPOCHS + hạ KL_COEF (vd 0.2) để học nhanh hơn. KL giữ 0.5 cho cả 2 mode
+# EPOCHS + hạ KL_COEF (vd 0.2) để học nhanh hơn. KL mặc định 0.1 từ config
+# (hạ từ 0.5 vì 7B bị KL chặn -> underfit).
 # (chưa có số chứng minh 7B cần KL khác 3B).
 if [ "${INIT_REV:-none}" = "none" ]; then
     case "$(echo "$MODEL" | tr '[:upper:]' '[:lower:]')" in
