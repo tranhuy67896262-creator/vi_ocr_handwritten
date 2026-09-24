@@ -106,8 +106,11 @@ class Configs:
     # Chống mất kiến thức gốc: cộng KL-divergence(model gốc || model LoRA) vào loss.
     # Model gốc = forward cùng batch với LoRA tạm tắt (disable_adapter), không tốn thêm model copy.
     # Tắt (False) nếu VRAM hẹp — tốn thêm 1 forward no_grad mỗi step.
+    # 0.1 (hạ từ 0.5): với 7B, KL=0.5 kéo ngược model mạnh hơn CE -> underfit
+    # (ce_loss nhỏ, model gần như không nhích). Chẩn đoán: so ce_loss vs kl_loss
+    # trong trainer_state.json; kl_loss >> ce_loss là lỗi KL.
     KL_REGULARIZATION = True
-    KL_COEFFICIENT = 0.5
+    KL_COEFFICIENT = 0.1
 
     # LoRA
     USE_4BIT = True

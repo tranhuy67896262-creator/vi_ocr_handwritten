@@ -49,8 +49,8 @@ def main():
     parser.add_argument("--no-kl", action="store_true",
                         help="Tắt KL-regularization (chống mất kiến thức) để tiết kiệm VRAM")
     parser.add_argument("--kl-coef", type=float, default=None,
-                        help="Hệ số KL (mặc định 0.5 từ config). Model lớn underfit "
-                             "(vd 7B thua 3B cùng data) thì hạ về 0.1-0.2 để học nhanh hơn")
+                        help="Hệ số KL (mặc định 0.1 từ config). Model lớn underfit "
+                             "(vd 7B thua 3B cùng data) thì hạ về 0.05-0.1 để học nhanh hơn")
     parser.add_argument("--no-4bit", action="store_true",
                         help="Train LoRA full-precision bf16 (bỏ 4-bit QLoRA; chất lượng nhỉnh hơn nhưng tốn VRAM)")
     parser.add_argument("--push", action="store_true", help="Push adapter lên Hugging Face Hub")
